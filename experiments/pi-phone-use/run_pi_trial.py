@@ -10,7 +10,7 @@ import signal
 import subprocess
 import time
 
-from config import output_dir, python_executable
+from config import decision_timeouts, output_dir, python_executable
 from replay_worker import private_json, validate_trial_id
 
 RUNTIME_DIR = Path(__file__).resolve().parent
@@ -60,8 +60,10 @@ def reset_phone(serial):
 
 
 def launch(provider, trial_id, *, base=None, timeout=230):
-    if provider not in {"jev", "deepseek"}:
+    if provider not in {"jev", "deepseek", "jev-auto"}:
         raise ValueError("Invalid provider")
+    # Reject invalid auto budgets before reset_phone can mutate the device.
+    budgets = decision_timeouts() if provider == "jev-auto" else None
     base = Path(base if base is not None else output_dir()).resolve()
     validate_new_trial(trial_id, base)
     serial = require_device()
@@ -110,10 +112,14 @@ def launch(provider, trial_id, *, base=None, timeout=230):
     metadata = {
         "trialId": trial_id,
         "provider": provider,
+        "decisionMode": provider,
+        "decisionPolicyDetails": "jev-first-deepseek-once" if budgets else "single-model",
         "excludedResetMs": setup_ms,
         "piSession": str(session),
         "piEvents": str(stdout),
     }
+    if budgets is not None:
+        metadata["decisionTimeoutsSeconds"] = dict(zip(("jev", "deepseek"), budgets))
     started = time.perf_counter()
     process, exit_code = None, None
     try:
@@ -170,7 +176,7 @@ def launch(provider, trial_id, *, base=None, timeout=230):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("provider", choices=["jev", "deepseek"])
+    parser.add_argument("provider", choices=["jev", "deepseek", "jev-auto"])
     parser.add_argument("trial_id")
     args = parser.parse_args(argv)
     result = launch(args.provider, args.trial_id)

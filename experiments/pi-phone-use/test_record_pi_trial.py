@@ -84,9 +84,10 @@ def test_ffprobe_requires_valid_portrait_video():
         recorder.validate_probe({"streams": [], "format": {"duration": "0"}})
 
 
+@pytest.mark.parametrize("model", ["jev", "deepseek", "jev-auto"])
 @pytest.mark.parametrize("trial_failure", [False, True])
 def test_owned_recording_is_stopped_and_pulled_even_when_trial_fails(
-    tmp_path, monkeypatch, trial_failure
+    tmp_path, monkeypatch, trial_failure, model
 ):
     calls = []
     monkeypatch.setattr(
@@ -121,11 +122,11 @@ def test_owned_recording_is_stopped_and_pulled_even_when_trial_fails(
         },
     )
     monkeypatch.setattr(recorder, "adb", lambda *a, **kw: calls.append("remove-verified-remote"))
-    result = recorder.record_trial("jev", "video-jev", report_dir=tmp_path)
+    result = recorder.record_trial(model, f"video-{model}", report_dir=tmp_path)
     assert calls == ["start", "trial", "stop", "pull", "remove-verified-remote"]
     assert result["status"] == ("failed" if trial_failure else "recorded")
     assert result["playbackRate"] == 1 and result["edited"] is False and result["trimmed"] is False
-    assert Path(result["videoPath"]).name == "jev-full-flow.mp4"
+    assert Path(result["videoPath"]).name == f"{model}-full-flow.mp4"
     metadata = json.loads(Path(result["recordingJson"]).read_text())
     assert metadata["remotePid"] == 12345
     assert metadata["serial"] == "fixture-device"

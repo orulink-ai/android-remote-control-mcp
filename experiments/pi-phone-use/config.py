@@ -1,6 +1,7 @@
 """Portable experiment configuration; credentials never enter run artifacts."""
 
 import json
+import math
 import os
 from pathlib import Path
 
@@ -12,6 +13,23 @@ def output_dir() -> Path:
 
 def python_executable() -> str:
     return os.environ.get("PHONE_BENCH_PYTHON", "python3")
+
+
+def decision_timeouts() -> tuple[float, float]:
+    """Validate the two auto-policy deadlines without exposing supplied values."""
+    values = []
+    for name, default in (
+        ("PHONE_BENCH_JEV_TIMEOUT", "5.0"),
+        ("PHONE_BENCH_DEEPSEEK_TIMEOUT", "15.0"),
+    ):
+        try:
+            value = float(os.environ.get(name, default))
+            if not math.isfinite(value) or not 0 < value <= 60:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ValueError(name) from None
+        values.append(value)
+    return values[0], values[1]
 
 
 def load_openrouter_key() -> str:

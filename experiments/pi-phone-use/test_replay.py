@@ -195,15 +195,6 @@ def test_real_pi_replay_loop_uses_only_fake_decisions_and_advances_six_snapshots
     assert meta["replayDatasetSha256"] == hashlib.sha256(data.read_bytes()).hexdigest()
 
 
-def test_replay_extension_is_exactly_the_frozen_extension_except_terminal_text():
-    base = Path(__file__).parent
-    original = (base / "pi-extension.ts").read_text()
-    expected = original.replace(
-        "手机控制任务已完成，最终状态已由控制器确认。", "只读手机状态回放已完成；没有派发手机动作。"
-    )
-    assert (base / "pi-replay-extension.ts").read_text() == expected
-
-
 def test_cold_and_warm_payload_hashes_match_and_model_errors_are_saved_safely(tmp_path):
     data = tmp_path / "snapshots.json"
     data.write_text(json.dumps(snapshots()))

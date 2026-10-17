@@ -46,6 +46,8 @@ RESULT_FIELDS = (
     "piAgentLoop",
     "clientMode",
     "decisionStyle",
+    "decisionPolicy",
+    "errorDetails",
 )
 MODEL_CALL_FIELDS = (
     "choice",
@@ -67,6 +69,9 @@ MODEL_CALL_FIELDS = (
     "snapshotId",
     "requestPayloadSha256",
     "failed",
+    "selectedBackend",
+    "fallbackUsed",
+    "attemptId",
 )
 OP_FIELDS = (
     "index",
@@ -80,6 +85,9 @@ OP_FIELDS = (
     "recovery",
     "oldId",
     "newId",
+    "backend",
+    "exceptionType",
+    "attemptId",
 )
 SENSITIVE_KEYS = {
     "apikey",
@@ -449,16 +457,38 @@ def build(
 ) -> dict[str, Any]:
     base = (base or output_dir()).resolve()
     report_dir = (report_dir or base / "report").resolve()
-    trials = [
-        t
-        for seq, ident in enumerate(FORMAL_IDS, 1)
-        if (t := aggregate_trial(base, ident, seq)) is not None
-    ]
+    trials = []
+    invalid_modes = []
+    for seq, ident in enumerate(FORMAL_IDS, 1):
+        trial = aggregate_trial(base, ident, seq)
+        if trial is None:
+            continue
+        expected = ident.rsplit("-", 1)[1]
+        # Either explicit declaration can disqualify a mislabeled baseline.
+        # Older independent results may lack both fields and retain ID inference.
+        modes = [trial.get("provider", expected)]
+        policy = trial.get("decisionPolicy")
+        if isinstance(policy, dict) and "mode" in policy:
+            modes.append(policy["mode"])
+        mismatched = [mode for mode in modes if mode != expected]
+        if mismatched:
+            actual = mismatched[0]
+            invalid_modes.append(
+                {
+                    "ident": ident,
+                    "expectedMode": expected,
+                    "actualMode": actual
+                    if actual in ("jev", "deepseek", "jev-auto")
+                    else "invalid",
+                }
+            )
+            continue
+        trials.append(trial)
+    accepted_ids = {trial["trialId"] for trial in trials}
     missing = [
         ident
         for ident in FORMAL_IDS
-        if not (base / ident / "result.json").is_file()
-        or not (base / f"{ident}-launch.json").is_file()
+        if ident not in accepted_ids or not (base / f"{ident}-launch.json").is_file()
     ]
     pilots = [t for ident in PILOT_IDS if (t := aggregate_trial(base, ident)) is not None]
     for pilot in pilots:
@@ -570,6 +600,7 @@ def build(
         "status": "complete" if all(readiness.values()) else "pending",
         "readiness": readiness,
         "pendingFormalIds": missing,
+        "invalidFormalModes": invalid_modes,
         "models": {
             "jev": {
                 "label": "Jev 1.14",

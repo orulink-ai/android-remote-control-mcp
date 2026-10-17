@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 import build_public_data as report
 import render_report
 
@@ -225,3 +227,109 @@ def test_first_observation_failure_with_no_final_state_remains_reportable(tmp_pa
 def test_public_state_ignores_non_object_observations():
     for missing_state in (None, [], "unavailable", False, 0):
         assert report.public_state(missing_state) == {}
+
+
+@pytest.mark.parametrize(
+    "fields,actual_mode",
+    [
+        ({"provider": "jev-auto"}, "jev-auto"),
+        ({"provider": "jev", "decisionPolicy": {"mode": "jev-auto"}}, "jev-auto"),
+        ({"provider": "deepseek"}, "deepseek"),
+        ({"provider": "jev", "decisionPolicy": {"mode": "deepseek"}}, "deepseek"),
+        ({"provider": "fixture-private-mode"}, "invalid"),
+    ],
+)
+def test_wrong_formal_mode_is_pending_and_never_enters_independent_statistics(
+    tmp_path, fields, actual_mode
+):
+    write_trial(tmp_path, "final-r1-jev", **fields)
+    write_trial(tmp_path, "final-r1-deepseek", provider="deepseek", piElapsedMs=300)
+    data = report.build(tmp_path)
+    assert [trial["trialId"] for trial in data["trials"]] == ["final-r1-deepseek"]
+    assert "final-r1-jev" in data["pendingFormalIds"]
+    assert data["invalidFormalModes"] == [
+        {
+            "ident": "final-r1-jev",
+            "expectedMode": "jev",
+            "actualMode": actual_mode,
+        }
+    ]
+    assert data["summary"]["jev"]["attempts"] == 0
+    assert data["summary"]["jev"]["successfulPi"]["medianMs"] is None
+    assert data["summary"]["deepseek"]["attempts"] == 1
+    assert data["summary"]["deepseek"]["successfulPi"]["medianMs"] == 300
+    assert data["readiness"]["formalComplete"] is False
+    assert "fixture-private-mode" not in json.dumps(data)
+
+
+def test_legacy_and_explicit_single_modes_preserve_formal_statistics(tmp_path):
+    write_trial(tmp_path, "final-r1-jev", piElapsedMs=400)
+    raw = write_trial(tmp_path, "final-r2-jev", piElapsedMs=600)
+    del raw["provider"]  # Historical evidence may predate the explicit mode field.
+    (tmp_path / "final-r2-jev" / "result.json").write_text(json.dumps(raw))
+    write_trial(
+        tmp_path,
+        "final-r1-deepseek",
+        provider="deepseek",
+        piElapsedMs=900,
+        decisionPolicy={"mode": "deepseek", "attempts": []},
+    )
+    data = report.build(tmp_path)
+    assert len(data["trials"]) == 3 and data["invalidFormalModes"] == []
+    assert data["summary"]["jev"]["successfulPi"]["medianMs"] == 500
+    assert data["summary"]["deepseek"]["successfulPi"]["medianMs"] == 900
+
+
+def test_auto_trial_audit_fields_are_preserved_without_promoting_or_leaking_secrets(tmp_path):
+    write_trial(
+        tmp_path,
+        "auto-extra",
+        provider="jev-auto",
+        decisionPolicy={"mode": "jev-auto", "attempts": [{"backend": "jev", "secret": "PRIVATE"}]},
+        errorDetails={
+            "stage": "decision_policy",
+            "exceptionType": "DecisionPolicyError",
+            "token": "PRIVATE",
+        },
+        modelCalls=[
+            {
+                "choice": "CLICK:new",
+                "selectedBackend": "deepseek",
+                "fallbackUsed": True,
+                "attemptId": 2,
+                "headers": {"Authorization": "PRIVATE"},
+            }
+        ],
+        operations=[
+            {
+                "name": "model_request_failure",
+                "backend": "jev",
+                "exceptionType": "ConnectError",
+                "attemptId": 1,
+                "arguments": {"token": "PRIVATE"},
+            }
+        ],
+    )
+    trial = report.aggregate_trial(tmp_path, "auto-extra")
+    assert trial["decisionPolicy"] == {"mode": "jev-auto", "attempts": [{"backend": "jev"}]}
+    assert trial["errorDetails"] == {
+        "stage": "decision_policy",
+        "exceptionType": "DecisionPolicyError",
+    }
+    assert trial["modelCalls"] == [
+        {
+            "choice": "CLICK:new",
+            "selectedBackend": "deepseek",
+            "fallbackUsed": True,
+            "attemptId": 2,
+        }
+    ]
+    assert trial["operations"][0] == {
+        "name": "model_request_failure",
+        "backend": "jev",
+        "exceptionType": "ConnectError",
+        "attemptId": 1,
+        "arguments": {},
+    }
+    assert "PRIVATE" not in json.dumps(trial)
+    assert report.build(tmp_path)["trials"] == []

@@ -4,7 +4,13 @@ import json
 
 import pytest
 
-from config import load_openrouter_key, mcp_settings, output_dir, python_executable
+from config import (
+    decision_timeouts,
+    load_openrouter_key,
+    mcp_settings,
+    output_dir,
+    python_executable,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +23,8 @@ def isolated_environment(monkeypatch, tmp_path):
         "ANDROID_MCP_SERVER",
         "PHONE_BENCH_OUTPUT_DIR",
         "PHONE_BENCH_PYTHON",
+        "PHONE_BENCH_JEV_TIMEOUT",
+        "PHONE_BENCH_DEEPSEEK_TIMEOUT",
     ]:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -75,3 +83,24 @@ def test_paths_and_python_can_be_overridden(monkeypatch, tmp_path):
 def test_output_default_is_repository_artifacts():
     assert output_dir().parts[-2:] == ("artifacts", "pi-phone-use")
     assert python_executable() == "python3"
+
+
+def test_auto_decision_timeout_defaults():
+    assert decision_timeouts() == (5.0, 15.0)
+
+
+def test_auto_decision_timeout_overrides(monkeypatch):
+    monkeypatch.setenv("PHONE_BENCH_JEV_TIMEOUT", "0.1")
+    monkeypatch.setenv("PHONE_BENCH_DEEPSEEK_TIMEOUT", "60")
+    assert decision_timeouts() == (0.1, 60.0)
+
+
+@pytest.mark.parametrize("name", ["PHONE_BENCH_JEV_TIMEOUT", "PHONE_BENCH_DEEPSEEK_TIMEOUT"])
+@pytest.mark.parametrize(
+    "value", ["", " ", "bad-private-value", "nan", "inf", "-inf", "0", "-1", "60.01"]
+)
+def test_invalid_auto_timeout_error_never_repeats_value(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError) as error:
+        decision_timeouts()
+    assert str(error.value) == name

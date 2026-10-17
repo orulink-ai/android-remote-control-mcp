@@ -214,7 +214,7 @@ the roadmap. Actual results vary with content and language.
 
 ### PI phone-use experiment (Jev / DeepSeek)
 
-The [PI experiment module](experiments/pi-phone-use/README.md) connects PI to this Android MCP through a custom extension and model provider. It includes a shared, fixed phone task, independent Jev / DeepSeek decision clients, offline tests, recording tools, and a report generator. See the [measured results and scope](docs/research/pi-phone-use-20261017.md). This is an opt-in experiment, not a general phone agent or an automatic model-fallback integration.
+The [PI experiment module](experiments/pi-phone-use/README.md) connects PI to this Android MCP through a custom extension and model provider. Its opt-in `jev-auto` mode tries Jev first and, after a model failure and a fresh PI observation, tries DeepSeek once. Independent `jev` / `deepseek` baselines remain available. It includes a shared, fixed phone task, offline tests, recording tools, and a report generator. See the [measured results and scope](docs/research/pi-phone-use-20261017.md) and [fallback policy](docs/plans/pi-jev-fallback.md). This is a dedicated task integration; loading it does not change the user's default PI configuration.
 
 ### Claude Desktop / Claude Code
 
