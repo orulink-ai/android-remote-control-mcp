@@ -212,6 +212,10 @@ the roadmap. Actual results vary with content and language.
 
 ## Integrations
 
+### PI phone-use experiment (Jev / DeepSeek)
+
+The [PI experiment module](experiments/pi-phone-use/README.md) connects PI to this Android MCP through a custom extension and model provider. It includes a shared, fixed phone task, independent Jev / DeepSeek decision clients, offline tests, recording tools, and a report generator. See the [measured results and scope](docs/research/pi-phone-use-20261017.md). This is an opt-in experiment, not a general phone agent or an automatic model-fallback integration.
+
 ### Claude Desktop / Claude Code
 
 Add the server to your `.mcp.json` configuration file:

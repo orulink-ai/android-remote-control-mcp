@@ -85,3 +85,10 @@ app/replay_*.log
 .dbip-cache/
 
 privacy-benchmark/.cache/
+
+# Local PI phone-use experiments: credentials, raw screens, videos and sessions
+/artifacts/pi-phone-use/
+/experiments/pi-phone-use/.venv/
+/experiments/pi-phone-use/__pycache__/
+/experiments/pi-phone-use/.pytest_cache/
+/experiments/pi-phone-use/.ruff_cache/

@@ -1,0 +1,5 @@
+# Versions used for the archived phone-use experiment and offline tests.
+httpx[http2]==0.28.1
+h2==4.4.1
+Pillow==13.0.0
+pytest==9.1.1

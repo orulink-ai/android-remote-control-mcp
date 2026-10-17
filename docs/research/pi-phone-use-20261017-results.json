@@ -1,0 +1,456 @@
+{
+  "schemaVersion": 1,
+  "experimentDate": "2026-10-17",
+  "timezone": "Asia/Shanghai",
+  "scope": "真实 PI 固定六阶段手机任务；单设备、每模型三轮；非通用自主 phone agent 基准",
+  "sourceEvidence": {
+    "name": "phone-use-optimized-20261017/public-data.json",
+    "sha256": "5b0db91cb989c702324ed6cf7a3963ecb6805f0d4e80c6b9f1ac7b0145fe829d",
+    "runtimeSha256": {
+      "controller.py": "0915ed88149df6257c126b85b59766416583ca7e4d9e00481ac5ad4b2af82a24",
+      "worker.py": "e32ea569a5d05d38b57ab67c75f4718f7fe2eee3110765e5da1e67b930542eaf",
+      "providers.py": "d3c00772b1b9c071c1357da627a6493c07546b34073eb515e8a538c644f5111b",
+      "pi-extension.ts": "97d510d956e11adf2220df1ee4261ba704dcde671c6260f18d5ff0c6c242039c",
+      "own_mcp.py": "a4051ea8508d39e82ee5535367599d1f363addefaeb03a0a95211d1ab7abc9dc"
+    }
+  },
+  "environment": {
+    "piVersion": "1.3.0",
+    "androidMcpVersion": "1.12.0",
+    "androidMcpBuiltFromCurrentHead": false,
+    "androidVersion": 16,
+    "transport": "同一 USB 转发 HTTP Android MCP",
+    "inferenceGateway": "OpenRouter"
+  },
+  "integration": {
+    "kind": "temporary PI extension + custom phone-benchmark provider + Python NDJSON worker",
+    "loadFlag": "-e pi-extension.ts",
+    "provider": "phone-benchmark",
+    "tools": [
+      "phone_observe",
+      "phone_action"
+    ],
+    "piOwnsAgentLoop": true,
+    "unrestrictedAutonomousPhoneAgent": false,
+    "installedIntoUserDefaultPi": false,
+    "automaticModelFallbackImplemented": false
+  },
+  "models": {
+    "jev": {
+      "label": "Jev 1.14",
+      "requestedModel": "typesafe/jev-1.14",
+      "protocol": "OpenRouter Decisions API, operation/target heads"
+    },
+    "deepseek": {
+      "label": "DeepSeek V4.1 Flash",
+      "requestedModel": "deepseek/deepseek-v4.1-flash",
+      "protocol": "OpenRouter chat completions, reasoning disabled, structured choice"
+    }
+  },
+  "task": {
+    "query": "小狮日记",
+    "stages": [
+      "search",
+      "open_first",
+      "like",
+      "collect",
+      "unlike",
+      "uncollect"
+    ],
+    "start": "Android launcher",
+    "expectedFinal": {
+      "liked": false,
+      "collected": false
+    }
+  },
+  "controls": [
+    "同一手机、同一已安装 Android MCP 服务、同一 USB 通道",
+    "共同阶段目标、精简状态、候选动作、执行器和截图颜色验证器",
+    "各轮持久 HTTP/2 client，首次连接与握手仍计时",
+    "PI agent_start 至 agent_end 为主指标，含初始化、读屏、操作、等待与验证",
+    "计时外重置桌面与帖子基线；正式顺序 J,D / D,J / J,D",
+    "Jev 使用 operation/target heads；DeepSeek 使用 reasoning-off JSON choice，非同一模型协议"
+  ],
+  "formalTrials": [
+    {
+      "trialId": "final-r1-jev",
+      "sequence": 1,
+      "modelKey": "jev",
+      "status": "success",
+      "piElapsedMs": 27032.259333,
+      "servedModels": [
+        "typesafe/jev-1.14-20261014"
+      ],
+      "counts": {
+        "modelRequests": 11,
+        "validDecisions": 11,
+        "failedModelRequests": 0,
+        "actionAttempts": 11,
+        "readCalls": 13,
+        "mcpErrors": 0,
+        "piToolCalls": 12
+      },
+      "completedMilestones": 6,
+      "finalState": {
+        "kind": "detail",
+        "liked": false,
+        "collected": false
+      },
+      "error": null
+    },
+    {
+      "trialId": "final-r1-deepseek",
+      "sequence": 2,
+      "modelKey": "deepseek",
+      "status": "success",
+      "piElapsedMs": 45331.942041999995,
+      "servedModels": [
+        "deepseek/deepseek-v4.1-flash"
+      ],
+      "counts": {
+        "modelRequests": 10,
+        "validDecisions": 10,
+        "failedModelRequests": 0,
+        "actionAttempts": 10,
+        "readCalls": 14,
+        "mcpErrors": 2,
+        "piToolCalls": 11
+      },
+      "completedMilestones": 6,
+      "finalState": {
+        "kind": "detail",
+        "liked": false,
+        "collected": false
+      },
+      "error": null
+    },
+    {
+      "trialId": "final-r2-deepseek",
+      "sequence": 3,
+      "modelKey": "deepseek",
+      "status": "success",
+      "piElapsedMs": 39765.679208,
+      "servedModels": [
+        "deepseek/deepseek-v4.1-flash"
+      ],
+      "counts": {
+        "modelRequests": 10,
+        "validDecisions": 10,
+        "failedModelRequests": 0,
+        "actionAttempts": 10,
+        "readCalls": 13,
+        "mcpErrors": 1,
+        "piToolCalls": 11
+      },
+      "completedMilestones": 6,
+      "finalState": {
+        "kind": "detail",
+        "liked": false,
+        "collected": false
+      },
+      "error": null
+    },
+    {
+      "trialId": "final-r2-jev",
+      "sequence": 4,
+      "modelKey": "jev",
+      "status": "success",
+      "piElapsedMs": 30357.367459,
+      "servedModels": [
+        "typesafe/jev-1.14-20261014"
+      ],
+      "counts": {
+        "modelRequests": 10,
+        "validDecisions": 10,
+        "failedModelRequests": 0,
+        "actionAttempts": 10,
+        "readCalls": 12,
+        "mcpErrors": 0,
+        "piToolCalls": 11
+      },
+      "completedMilestones": 6,
+      "finalState": {
+        "kind": "detail",
+        "liked": false,
+        "collected": false
+      },
+      "error": null
+    },
+    {
+      "trialId": "final-r3-jev",
+      "sequence": 5,
+      "modelKey": "jev",
+      "status": "failed",
+      "piElapsedMs": 6782.075792000001,
+      "servedModels": [],
+      "counts": {
+        "modelRequests": 1,
+        "validDecisions": 0,
+        "failedModelRequests": 1,
+        "actionAttempts": 0,
+        "readCalls": 1,
+        "mcpErrors": 0,
+        "piToolCalls": 1
+      },
+      "completedMilestones": 0,
+      "finalState": {
+        "kind": "launcher",
+        "liked": null,
+        "collected": null
+      },
+      "error": "Model request failed or response was invalid; no action selected"
+    },
+    {
+      "trialId": "final-r3-deepseek",
+      "sequence": 6,
+      "modelKey": "deepseek",
+      "status": "success",
+      "piElapsedMs": 33117.278333,
+      "servedModels": [
+        "deepseek/deepseek-v4.1-flash"
+      ],
+      "counts": {
+        "modelRequests": 10,
+        "validDecisions": 10,
+        "failedModelRequests": 0,
+        "actionAttempts": 10,
+        "readCalls": 13,
+        "mcpErrors": 1,
+        "piToolCalls": 11
+      },
+      "completedMilestones": 6,
+      "finalState": {
+        "kind": "detail",
+        "liked": false,
+        "collected": false
+      },
+      "error": null
+    }
+  ],
+  "summary": {
+    "jev": {
+      "attempts": 3,
+      "successes": 2,
+      "successRate": 0.6666666666666666,
+      "successfulPi": {
+        "observedN": 2,
+        "missingN": 0,
+        "medianMs": 28694.813396,
+        "minMs": 27032.259333,
+        "maxMs": 30357.367459
+      }
+    },
+    "deepseek": {
+      "attempts": 3,
+      "successes": 3,
+      "successRate": 1.0,
+      "successfulPi": {
+        "observedN": 3,
+        "missingN": 0,
+        "medianMs": 39765.679208,
+        "minMs": 33117.278333,
+        "maxMs": 45331.942041999995
+      }
+    }
+  },
+  "videos": [
+    {
+      "trialId": "video-jev",
+      "modelKey": "jev",
+      "status": "success",
+      "piElapsedMs": 19511.211333,
+      "durationSeconds": 20.282456,
+      "playbackRate": 1,
+      "edited": false,
+      "trimmed": false,
+      "fullFlowCovered": true,
+      "includedInFormalStatistics": false,
+      "artifactRelativePath": "phone-use-videos/jev-full-flow.mp4"
+    },
+    {
+      "trialId": "video-deepseek",
+      "modelKey": "deepseek",
+      "status": "success",
+      "piElapsedMs": 23146.948207999998,
+      "durationSeconds": 24.058211,
+      "playbackRate": 1,
+      "edited": false,
+      "trimmed": false,
+      "fullFlowCovered": true,
+      "includedInFormalStatistics": false,
+      "artifactRelativePath": "phone-use-videos/deepseek-full-flow.mp4"
+    }
+  ],
+  "diagnostic": {
+    "replayOnly": true,
+    "phoneActionsDispatched": false,
+    "snapshotCount": 6,
+    "samePayloadHashesAcrossModes": true,
+    "model": "typesafe/jev-1.14-20261014",
+    "variants": [
+      {
+        "trialId": "replay-cold-r1",
+        "status": "replay_completed",
+        "mode": "cold",
+        "piElapsedMs": 15107.23025,
+        "requestMedianMs": 2630.3939374993206,
+        "calls": [
+          {
+            "snapshotId": "final-r2-jev-state-1",
+            "requestPayloadSha256": "94042d8f2df9aaa1270bfdd031471df1f5799505c760a6ea0e0f0a58c09c3893",
+            "latencyMs": 2785.1098329992965,
+            "httpVersion": "HTTP/1.1",
+            "newConnection": true
+          },
+          {
+            "snapshotId": "final-r2-jev-state-3",
+            "requestPayloadSha256": "27a9a7de9562067d1c400e61a43d4dcd939614a2ac50210379b960292d630fb4",
+            "latencyMs": 2759.469083001022,
+            "httpVersion": "HTTP/1.1",
+            "newConnection": true
+          },
+          {
+            "snapshotId": "final-r2-jev-state-6",
+            "requestPayloadSha256": "710ee7e448b71f7b89cdbfcbafa367be1a3798bd3120212b3e2f1e5afd389c4a",
+            "latencyMs": 1751.108624986955,
+            "httpVersion": "HTTP/1.1",
+            "newConnection": true
+          },
+          {
+            "snapshotId": "final-r2-jev-state-7",
+            "requestPayloadSha256": "33874282da24b93d2f1fa7818fbce02725f4cc321d8b49404fd23fa914bd32d4",
+            "latencyMs": 2501.318791997619,
+            "httpVersion": "HTTP/1.1",
+            "newConnection": true
+          },
+          {
+            "snapshotId": "final-r2-jev-state-8",
+            "requestPayloadSha256": "f0d97d2d16b507815153b29cd1b8da33e287e5f2167674d731c0f82a65719ec3",
+            "latencyMs": 1793.6456669995096,
+            "httpVersion": "HTTP/1.1",
+            "newConnection": true
+          },
+          {
+            "snapshotId": "final-r2-jev-state-9",
+            "requestPayloadSha256": "4c32b8ff0ef8357bd465cdbb63554e4f1256cfdf5548463f6089aac403799a25",
+            "latencyMs": 3368.8267079996876,
+            "httpVersion": "HTTP/1.1",
+            "newConnection": true
+          }
+        ]
+      },
+      {
+        "trialId": "replay-warm-r1",
+        "status": "replay_completed",
+        "mode": "warm",
+        "piElapsedMs": 8886.898416,
+        "requestMedianMs": 1227.4632500048028,
+        "calls": [
+          {
+            "snapshotId": "final-r2-jev-state-1",
+            "requestPayloadSha256": "94042d8f2df9aaa1270bfdd031471df1f5799505c760a6ea0e0f0a58c09c3893",
+            "latencyMs": 3335.2195420011412,
+            "httpVersion": "HTTP/2",
+            "newConnection": true
+          },
+          {
+            "snapshotId": "final-r2-jev-state-3",
+            "requestPayloadSha256": "27a9a7de9562067d1c400e61a43d4dcd939614a2ac50210379b960292d630fb4",
+            "latencyMs": 1185.7562500081258,
+            "httpVersion": "HTTP/2",
+            "newConnection": false
+          },
+          {
+            "snapshotId": "final-r2-jev-state-6",
+            "requestPayloadSha256": "710ee7e448b71f7b89cdbfcbafa367be1a3798bd3120212b3e2f1e5afd389c4a",
+            "latencyMs": 1315.0483749923296,
+            "httpVersion": "HTTP/2",
+            "newConnection": false
+          },
+          {
+            "snapshotId": "final-r2-jev-state-7",
+            "requestPayloadSha256": "33874282da24b93d2f1fa7818fbce02725f4cc321d8b49404fd23fa914bd32d4",
+            "latencyMs": 1269.1702500014799,
+            "httpVersion": "HTTP/2",
+            "newConnection": false
+          },
+          {
+            "snapshotId": "final-r2-jev-state-8",
+            "requestPayloadSha256": "f0d97d2d16b507815153b29cd1b8da33e287e5f2167674d731c0f82a65719ec3",
+            "latencyMs": 818.3192500000587,
+            "httpVersion": "HTTP/2",
+            "newConnection": false
+          },
+          {
+            "snapshotId": "final-r2-jev-state-9",
+            "requestPayloadSha256": "4c32b8ff0ef8357bd465cdbb63554e4f1256cfdf5548463f6089aac403799a25",
+            "latencyMs": 860.7526249979855,
+            "httpVersion": "HTTP/2",
+            "newConnection": false
+          }
+        ]
+      }
+    ],
+    "limitation": "cold 同时采用 HTTP/1.1 与每请求新建连接，warm 采用 HTTP/2 持久 client。协议和连接策略共同改变，不能仅归因为连接复用；只读回放不计完整任务成功。"
+  },
+  "incidents": [
+    {
+      "kind": "formal_api_failure",
+      "trialId": "final-r3-jev",
+      "piElapsedMs": 6782.075792,
+      "apiRequestMs": 6469.6634169959,
+      "connectMs": 4.8477499949513,
+      "tlsMs": null,
+      "httpResponseObserved": false,
+      "validModelDecisions": 0,
+      "phoneActionsDispatched": 0,
+      "cause": "未观测 TLS 完成/HTTP 响应；原始底层异常被统一包装，无法确定具体连接失败原因，不能归因于 Jev 模型本体。"
+    },
+    {
+      "kind": "between_trial_session_exhaustion",
+      "httpStatus": 503,
+      "activeSessions": 100,
+      "includedInModelFailureRate": false,
+      "cause": "实验 MCP 客户端关闭 TCP 时没有发送 DELETE，轮间会话累积；仅清理本实验已知会话后继续。"
+    }
+  ],
+  "restoration": {
+    "verified": true,
+    "excludedFromBenchmark": true,
+    "original": {
+      "liked": true,
+      "collected": false
+    },
+    "after": {
+      "liked": true,
+      "collected": false
+    }
+  },
+  "validation": {
+    "originalExperimentTests": 42,
+    "result": "passed",
+    "files": [
+      "test_providers.py",
+      "test_controller_optimized.py",
+      "test_replay.py",
+      "test_record_pi_trial.py"
+    ],
+    "testScope": "离线 mock、协议与真实 PI fake-decision smoke；没有发起手机动作或真实模型请求"
+  },
+  "limitations": [
+    "connect包含DNS与TCP，本trace不能单拆DNS。",
+    "headers等待混合网络、网关、排队与服务端处理，不能称纯GPU推理。",
+    "缺失网络阶段保留null，不用0补齐；分阶段中位数不能相加当总中位数。",
+    "HTTP/2与连接复用按实际响应和newConnection trace报告，而不是只看client配置。warm首请求仍可能包含新连接与TLS。",
+    "轮间MCP会话耗尽在清理阶段处理，不计模型失败；Jev第三正式轮API连接失败保留为链路失败，不等同模型判断错误。",
+    "cold为HTTP/1连接策略、warm为HTTP/2持久client策略，协议与连接策略同时变化；即使模型与payload相同，也不能把差异只归因于连接复用。",
+    "多项优化一起改变，历史条件不同，不支持单项归因；每模型3轮不能推出稳定普遍加速。",
+    "本次手机服务为设备已安装版本，非当前源码HEAD重新构建；具体版本见观察值。"
+  ],
+  "nextStageRecommendation": {
+    "decisionPolicy": "Jev 优先；仅在尚未派发动作的模型请求失败/非法选择时，用同一最新状态与候选交给 DeepSeek。",
+    "sharedRisk": "两模型均经 OpenRouter，共享网络或网关故障可能使回退同样失败。",
+    "actionFailure": "MCP 超时或交付不确定时先读屏核验；禁止盲目重放点赞/收藏 toggle。",
+    "implemented": false
+  }
+}
