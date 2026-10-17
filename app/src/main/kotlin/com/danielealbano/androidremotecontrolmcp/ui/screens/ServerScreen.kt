@@ -54,6 +54,7 @@ import com.danielealbano.androidremotecontrolmcp.ui.components.OrulinkBrandMark
 import com.danielealbano.androidremotecontrolmcp.ui.components.PrivacyModeCard
 import com.danielealbano.androidremotecontrolmcp.ui.components.ServerLogsSection
 import com.danielealbano.androidremotecontrolmcp.ui.components.ServerStatusCard
+import com.danielealbano.androidremotecontrolmcp.ui.components.WorkflowRecordingCard
 import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.ChannelViewModel
 import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.ControlExperienceViewModel
 import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.LogsViewModel
@@ -65,6 +66,7 @@ import com.danielealbano.androidremotecontrolmcp.utils.NetworkUtils
 fun ServerScreen(
     onNavigateToPermissions: () -> Unit,
     onShowAllLogs: () -> Unit,
+    onOpenRecording: () -> Unit,
     onNavigateToNetworkSettings: () -> Unit,
     onNavigateToTunnelSettings: () -> Unit,
     onOpenPrivacySettings: () -> Unit,
@@ -139,6 +141,8 @@ fun ServerScreen(
                 controlState = controlState,
             )
 
+            Spacer(Modifier.height(16.dp))
+            WorkflowRecordingCard(onOpen = onOpenRecording)
             Spacer(Modifier.height(16.dp))
             if (!isAccessibilityEnabled) {
                 PermissionWarningCard(onClick = onNavigateToPermissions)

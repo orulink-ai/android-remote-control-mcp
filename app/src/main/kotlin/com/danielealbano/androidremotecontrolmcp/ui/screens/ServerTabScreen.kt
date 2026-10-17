@@ -30,10 +30,17 @@ fun ServerTabScreen(
             ServerScreen(
                 onNavigateToPermissions = onNavigateToPermissions,
                 onShowAllLogs = { navController.navigate(ServerRoute.Logs.route) },
+                onOpenRecording = { navController.navigate(ServerRoute.Recording.route) },
                 onNavigateToNetworkSettings = onNavigateToNetworkSettings,
                 onNavigateToTunnelSettings = onNavigateToTunnelSettings,
                 onOpenPrivacySettings = onOpenPrivacySettings,
                 viewModel = viewModel,
+            )
+        }
+        composable(ServerRoute.Recording.route) {
+            RecordingScreen(
+                onBack = { navController.popBackStack() },
+                onOpenPermissions = onNavigateToPermissions,
             )
         }
         composable(ServerRoute.Logs.route) {

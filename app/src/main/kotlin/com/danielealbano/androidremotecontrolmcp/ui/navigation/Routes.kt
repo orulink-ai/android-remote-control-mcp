@@ -46,4 +46,6 @@ sealed class ServerRoute(
     data object Index : ServerRoute("server/index")
 
     data object Logs : ServerRoute("server/logs")
+
+    data object Recording : ServerRoute("server/recording")
 }

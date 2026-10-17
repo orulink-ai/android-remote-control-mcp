@@ -1,0 +1,667 @@
+{
+  "schemaVersion": 1,
+  "experimentDate": "2026-10-18",
+  "status": "complete",
+  "summary": {
+    "jev": {
+      "attempts": 3,
+      "successes": 3,
+      "successRate": 1.0,
+      "timedSuccesses": 3,
+      "medianPiMs": 22536.768874999998,
+      "medianModelCalls": 14.0,
+      "medianModelRequests": 14.0,
+      "medianRecipeHits": null,
+      "medianModelFallbacks": null,
+      "medianVerifiedSteps": null,
+      "medianSettleWaits": null,
+      "medianReferenceRefreshes": null
+    },
+    "skill": {
+      "attempts": 3,
+      "successes": 3,
+      "successRate": 1.0,
+      "timedSuccesses": 3,
+      "medianPiMs": 15593.902209000002,
+      "medianModelCalls": 0.0,
+      "medianModelRequests": 0.0,
+      "medianRecipeHits": 10.0,
+      "medianModelFallbacks": 0.0,
+      "medianVerifiedSteps": 9.0,
+      "medianSettleWaits": 5.0,
+      "medianReferenceRefreshes": 1.0
+    }
+  },
+  "comparison": {
+    "savedMs": 6942.866665999996,
+    "speedup": 1.4452295886524753,
+    "reductionPercent": 30.80684149759244,
+    "breakEvenRuns": 1,
+    "breakEvenIncludingDemoRuns": 4,
+    "reason": "successful_run_medians"
+  },
+  "generation": {
+    "status": "success",
+    "generationMs": 1.2200420023873448,
+    "demonstrationMs": 23406.388584,
+    "stepCount": 9,
+    "reviewState": "verified-demonstration",
+    "sourceDemoTrialId": "demo"
+  },
+  "context": {
+    "deviceLabel": "Redmi K60 Pro · 两组统一设备",
+    "androidVersion": "16",
+    "screenSize": "1440 × 3200",
+    "mcpVersion": "本分支 FOSS Debug · 截图间隔保护 350 ms · APK 55d7b589d25c",
+    "statusNote": "V3 固定版本：350ms 截图门控、工具指示器开启；V1/V2 开发中止版本独立保留。额外 Jev 录像首轮在打开帖子后选择 BLOCKED 停止，原片保留；重录成功片单列，不进入正式三轮统计。"
+  },
+  "trials": [
+    {
+      "trialId": "rr-r1-jev",
+      "mode": "jev",
+      "status": "success",
+      "piElapsedMs": 22536.768874999998,
+      "modelCalls": 14,
+      "modelRequests": 14,
+      "recipeHits": null,
+      "modelFallbacks": null,
+      "verifiedSteps": null,
+      "settleWaits": null,
+      "referenceRefreshes": null,
+      "actionAttempts": 14,
+      "readCalls": 16,
+      "phases": [
+        {
+          "kind": "model",
+          "ms": 9154.0166259947
+        },
+        {
+          "kind": "mcp",
+          "ms": 6490.953002037713
+        },
+        {
+          "kind": "wait",
+          "ms": 6052.160165985697
+        },
+        {
+          "kind": "other",
+          "ms": 727.3048309871228
+        }
+      ],
+      "milestones": [
+        {
+          "next": "open_first"
+        },
+        {
+          "next": "like"
+        },
+        {
+          "next": "collect"
+        },
+        {
+          "next": "unlike"
+        },
+        {
+          "next": "uncollect"
+        },
+        {
+          "next": "done"
+        }
+      ],
+      "error": null,
+      "finalState": {
+        "kind": "detail",
+        "queryMatches": false,
+        "firstTitleVisible": true,
+        "liked": false,
+        "collected": false
+      },
+      "piAgentLoop": true
+    },
+    {
+      "trialId": "rr-r1-skill",
+      "mode": "skill",
+      "status": "success",
+      "piElapsedMs": 15523.220625,
+      "modelCalls": 0,
+      "modelRequests": 0,
+      "recipeHits": 10,
+      "modelFallbacks": 0,
+      "verifiedSteps": 9,
+      "settleWaits": 5,
+      "referenceRefreshes": 1,
+      "actionAttempts": 15,
+      "readCalls": 17,
+      "phases": [
+        {
+          "kind": "model",
+          "ms": 0
+        },
+        {
+          "kind": "mcp",
+          "ms": 9289.196664947667
+        },
+        {
+          "kind": "wait",
+          "ms": 6056.448791976436
+        },
+        {
+          "kind": "other",
+          "ms": 99.18504307279363
+        }
+      ],
+      "milestones": [
+        {
+          "next": "open_first"
+        },
+        {
+          "next": "like"
+        },
+        {
+          "next": "collect"
+        },
+        {
+          "next": "unlike"
+        },
+        {
+          "next": "uncollect"
+        },
+        {
+          "next": "done"
+        }
+      ],
+      "error": null,
+      "finalState": {
+        "kind": "detail",
+        "queryMatches": false,
+        "firstTitleVisible": true,
+        "liked": false,
+        "collected": false
+      },
+      "piAgentLoop": true
+    },
+    {
+      "trialId": "rr-r2-jev",
+      "mode": "jev",
+      "status": "success",
+      "piElapsedMs": 21823.491333,
+      "modelCalls": 14,
+      "modelRequests": 14,
+      "recipeHits": null,
+      "modelFallbacks": null,
+      "verifiedSteps": null,
+      "settleWaits": null,
+      "referenceRefreshes": null,
+      "actionAttempts": 14,
+      "readCalls": 16,
+      "phases": [
+        {
+          "kind": "model",
+          "ms": 8643.708079005592
+        },
+        {
+          "kind": "mcp",
+          "ms": 7234.320751056657
+        },
+        {
+          "kind": "wait",
+          "ms": 5654.458456017892
+        },
+        {
+          "kind": "other",
+          "ms": 163.2539229176473
+        }
+      ],
+      "milestones": [
+        {
+          "next": "open_first"
+        },
+        {
+          "next": "like"
+        },
+        {
+          "next": "collect"
+        },
+        {
+          "next": "unlike"
+        },
+        {
+          "next": "uncollect"
+        },
+        {
+          "next": "done"
+        }
+      ],
+      "error": null,
+      "finalState": {
+        "kind": "detail",
+        "queryMatches": false,
+        "firstTitleVisible": true,
+        "liked": false,
+        "collected": false
+      },
+      "piAgentLoop": true
+    },
+    {
+      "trialId": "rr-r2-skill",
+      "mode": "skill",
+      "status": "success",
+      "piElapsedMs": 15769.146041,
+      "modelCalls": 0,
+      "modelRequests": 0,
+      "recipeHits": 10,
+      "modelFallbacks": 0,
+      "verifiedSteps": 9,
+      "settleWaits": 5,
+      "referenceRefreshes": 1,
+      "actionAttempts": 15,
+      "readCalls": 17,
+      "phases": [
+        {
+          "kind": "model",
+          "ms": 0
+        },
+        {
+          "kind": "mcp",
+          "ms": 9464.894542979891
+        },
+        {
+          "kind": "wait",
+          "ms": 6059.427918022266
+        },
+        {
+          "kind": "other",
+          "ms": 116.60003899305593
+        }
+      ],
+      "milestones": [
+        {
+          "next": "open_first"
+        },
+        {
+          "next": "like"
+        },
+        {
+          "next": "collect"
+        },
+        {
+          "next": "unlike"
+        },
+        {
+          "next": "uncollect"
+        },
+        {
+          "next": "done"
+        }
+      ],
+      "error": null,
+      "finalState": {
+        "kind": "detail",
+        "queryMatches": false,
+        "firstTitleVisible": true,
+        "liked": false,
+        "collected": false
+      },
+      "piAgentLoop": true
+    },
+    {
+      "trialId": "rr-r3-jev",
+      "mode": "jev",
+      "status": "success",
+      "piElapsedMs": 23563.204625,
+      "modelCalls": 14,
+      "modelRequests": 14,
+      "recipeHits": null,
+      "modelFallbacks": null,
+      "verifiedSteps": null,
+      "settleWaits": null,
+      "referenceRefreshes": null,
+      "actionAttempts": 14,
+      "readCalls": 16,
+      "phases": [
+        {
+          "kind": "model",
+          "ms": 10491.273459992954
+        },
+        {
+          "kind": "mcp",
+          "ms": 7191.880040045362
+        },
+        {
+          "kind": "wait",
+          "ms": 5638.184372975957
+        },
+        {
+          "kind": "other",
+          "ms": 163.54687698185444
+        }
+      ],
+      "milestones": [
+        {
+          "next": "open_first"
+        },
+        {
+          "next": "like"
+        },
+        {
+          "next": "collect"
+        },
+        {
+          "next": "unlike"
+        },
+        {
+          "next": "uncollect"
+        },
+        {
+          "next": "done"
+        }
+      ],
+      "error": null,
+      "finalState": {
+        "kind": "detail",
+        "queryMatches": false,
+        "firstTitleVisible": true,
+        "liked": false,
+        "collected": false
+      },
+      "piAgentLoop": true
+    },
+    {
+      "trialId": "rr-r3-skill",
+      "mode": "skill",
+      "status": "success",
+      "piElapsedMs": 15593.902209000002,
+      "modelCalls": 0,
+      "modelRequests": 0,
+      "recipeHits": 10,
+      "modelFallbacks": 0,
+      "verifiedSteps": 9,
+      "settleWaits": 5,
+      "referenceRefreshes": 1,
+      "actionAttempts": 15,
+      "readCalls": 17,
+      "phases": [
+        {
+          "kind": "model",
+          "ms": 0
+        },
+        {
+          "kind": "mcp",
+          "ms": 9246.771499019815
+        },
+        {
+          "kind": "wait",
+          "ms": 6034.442997988663
+        },
+        {
+          "kind": "other",
+          "ms": 146.4305859990418
+        }
+      ],
+      "milestones": [
+        {
+          "next": "open_first"
+        },
+        {
+          "next": "like"
+        },
+        {
+          "next": "collect"
+        },
+        {
+          "next": "unlike"
+        },
+        {
+          "next": "uncollect"
+        },
+        {
+          "next": "done"
+        }
+      ],
+      "error": null,
+      "finalState": {
+        "kind": "detail",
+        "queryMatches": false,
+        "firstTitleVisible": true,
+        "liked": false,
+        "collected": false
+      },
+      "piAgentLoop": true
+    }
+  ],
+  "videos": [
+    {
+      "mode": "jev",
+      "trialId": "video-jev-retry-1",
+      "path": "phone-use-videos/jev-retry-1-full-flow.mp4",
+      "available": true,
+      "trial": {
+        "trialId": "video-jev-retry-1",
+        "mode": "jev",
+        "status": "success",
+        "piElapsedMs": 24641.819667,
+        "modelCalls": 15,
+        "modelRequests": 15,
+        "recipeHits": null,
+        "modelFallbacks": null,
+        "verifiedSteps": null,
+        "settleWaits": null,
+        "referenceRefreshes": null,
+        "actionAttempts": 15,
+        "readCalls": 18,
+        "phases": [
+          {
+            "kind": "model",
+            "ms": 9819.871999017778
+          },
+          {
+            "kind": "mcp",
+            "ms": 8126.487666042522
+          },
+          {
+            "kind": "wait",
+            "ms": 6491.614500977448
+          },
+          {
+            "kind": "other",
+            "ms": 108.66737597098108
+          }
+        ],
+        "milestones": [
+          {
+            "next": "open_first"
+          },
+          {
+            "next": "like"
+          },
+          {
+            "next": "collect"
+          },
+          {
+            "next": "unlike"
+          },
+          {
+            "next": "uncollect"
+          },
+          {
+            "next": "done"
+          }
+        ],
+        "error": null,
+        "finalState": {
+          "kind": "detail",
+          "queryMatches": false,
+          "firstTitleVisible": true,
+          "liked": false,
+          "collected": false
+        },
+        "piAgentLoop": true
+      },
+      "earlierAttempts": [
+        {
+          "mode": "jev",
+          "trialId": "video-jev",
+          "path": "phone-use-videos/jev-full-flow.mp4",
+          "available": true,
+          "trial": {
+            "trialId": "video-jev",
+            "mode": "jev",
+            "status": "failed",
+            "piElapsedMs": 21990.375459,
+            "modelCalls": 12,
+            "modelRequests": 12,
+            "recipeHits": null,
+            "modelFallbacks": null,
+            "verifiedSteps": null,
+            "settleWaits": null,
+            "referenceRefreshes": null,
+            "actionAttempts": 12,
+            "readCalls": 14,
+            "phases": [
+              {
+                "kind": "model",
+                "ms": 9429.052208011854
+              },
+              {
+                "kind": "mcp",
+                "ms": 7501.171834010165
+              },
+              {
+                "kind": "wait",
+                "ms": 4871.925250990898
+              },
+              {
+                "kind": "other",
+                "ms": 66.43178997910582
+              }
+            ],
+            "milestones": [
+              {
+                "next": "open_first"
+              },
+              {
+                "next": "like"
+              }
+            ],
+            "error": "Phone worker command failed",
+            "finalState": {
+              "kind": "detail",
+              "queryMatches": false,
+              "firstTitleVisible": true,
+              "liked": false,
+              "collected": false
+            },
+            "piAgentLoop": true
+          },
+          "earlierAttempts": []
+        }
+      ]
+    },
+    {
+      "mode": "skill",
+      "trialId": "video-skill",
+      "path": "phone-use-videos/skill-full-flow.mp4",
+      "available": true,
+      "trial": {
+        "trialId": "video-skill",
+        "mode": "skill",
+        "status": "success",
+        "piElapsedMs": 17086.079374999998,
+        "modelCalls": 0,
+        "modelRequests": 0,
+        "recipeHits": 10,
+        "modelFallbacks": 0,
+        "verifiedSteps": 9,
+        "settleWaits": 6,
+        "referenceRefreshes": 1,
+        "actionAttempts": 16,
+        "readCalls": 18,
+        "phases": [
+          {
+            "kind": "model",
+            "ms": 0
+          },
+          {
+            "kind": "mcp",
+            "ms": 10377.20212500426
+          },
+          {
+            "kind": "wait",
+            "ms": 6495.73983103619
+          },
+          {
+            "kind": "other",
+            "ms": 136.3760859676404
+          }
+        ],
+        "milestones": [
+          {
+            "next": "open_first"
+          },
+          {
+            "next": "like"
+          },
+          {
+            "next": "collect"
+          },
+          {
+            "next": "unlike"
+          },
+          {
+            "next": "uncollect"
+          },
+          {
+            "next": "done"
+          }
+        ],
+        "error": null,
+        "finalState": {
+          "kind": "detail",
+          "queryMatches": false,
+          "firstTitleVisible": true,
+          "liked": false,
+          "collected": false
+        },
+        "piAgentLoop": true
+      },
+      "earlierAttempts": []
+    }
+  ],
+  "testEvidence": {
+    "pythonTestsPassed": 355,
+    "pythonDurationSeconds": 6.62,
+    "runtimeFrozenFilesUnchanged": 14,
+    "androidRecordingTests": 24,
+    "androidScreenshotTests": 73,
+    "androidScreenshotGateTestsWithin73": 11,
+    "androidBuild": "assembleFossDebug passed",
+    "androidLint": {
+      "task": "lintFossDebug",
+      "errors": 0,
+      "warnings": 120
+    },
+    "androidKtlint": "passed"
+  },
+  "developmentVersions": [
+    {
+      "version": "V1",
+      "includedInFormal": false,
+      "stopReason": "MCP screenshot request interval restriction; shared request pacing revised before restarting the comparison."
+    },
+    {
+      "version": "V2",
+      "includedInFormal": false,
+      "stopReason": "Confirmed undispatched stale reference was wrongly verified as an executed action; protocol added with TDD before restarting."
+    }
+  ],
+  "restoration": {
+    "verified": true,
+    "originalLiked": false,
+    "originalCollected": false,
+    "finalLiked": false,
+    "finalCollected": false,
+    "actionRequired": false,
+    "finalTaskVerificationIncludedInPi": true,
+    "closingComparisonAddedToTiming": false
+  }
+}

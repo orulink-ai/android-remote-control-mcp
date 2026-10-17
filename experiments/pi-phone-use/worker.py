@@ -23,6 +23,19 @@ from providers import DecisionClient, ProviderError
 from worker_io import cancellation_scope, protocol_lines
 
 
+class LocalRecipeClient:
+    """Skill drift stops locally; this mode has no network model dependency."""
+
+    mode = "local"
+    decisionStyle = "recipe"
+
+    def __init__(self):
+        self.closed = False
+
+    async def close(self):
+        self.closed = True
+
+
 def safe_error(error, command):
     """No response bodies or arbitrary exception messages cross the IPC boundary."""
     if isinstance(error, ProviderError):
@@ -90,27 +103,48 @@ async def serve(
     *,
     input_stream=None,
     output_stream=None,
-    runtime_factory=PhoneRuntime,
+    runtime_factory=None,
     client_factory=DecisionClient,
     key_reader=load_openrouter_key,
     base=None,
 ):
     """Run the actual protocol; injectable dependencies keep tests device-free."""
-    if provider not in {"jev", "deepseek", "jev-auto"}:
+    if provider not in {"jev", "deepseek", "jev-auto", "skill"}:
         raise ValueError("Unsupported phone decision mode")
     budgets = decision_timeouts() if provider == "jev-auto" else (5.0, 15.0)
+    recipe = None
+    if provider == "skill":
+        from workflow import SkillPolicy, load_recipe
+
+        recipe_path = os.environ.get("PHONE_BENCH_RECIPE", "")
+        if not recipe_path.strip():
+            raise ValueError("PHONE_BENCH_RECIPE is required for skill mode")
+        recipe = load_recipe(Path(recipe_path).expanduser())
+    if runtime_factory is None:
+        if os.environ.get("PHONE_BENCH_RECORDING") == "1":
+            from workflow import RecordingPhoneRuntime
+
+            runtime_factory = RecordingPhoneRuntime
+        else:
+            runtime_factory = PhoneRuntime
     base = Path(base) if base is not None else output_dir()
     input_stream = sys.stdin if input_stream is None else input_stream
     output_stream = sys.stdout if output_stream is None else output_stream
-    client = client_factory(
-        key_reader(),
-        mode=os.environ.get("PHONE_BENCH_MODE", "warm"),
-        compact=True,
-        decisionStyle="heads",
+    client = (
+        LocalRecipeClient()
+        if provider == "skill"
+        else client_factory(
+            key_reader(),
+            mode=os.environ.get("PHONE_BENCH_MODE", "warm"),
+            compact=True,
+            decisionStyle="heads",
+        )
     )
-    policy = DecisionPolicy(
-        client, provider, primary_timeout=budgets[0], fallback_timeout=budgets[1]
-    )
+    policy_options = {"primary_timeout": budgets[0], "fallback_timeout": budgets[1]}
+    if provider == "skill":
+        policy = SkillPolicy(client, provider, recipe=recipe, **policy_options)
+    else:
+        policy = DecisionPolicy(client, provider, **policy_options)
     runtime, error_details = None, None
     finished = failed = False
     approved_choice = approved_observation = None
@@ -120,6 +154,8 @@ async def serve(
             raise RuntimeError("No phone observation to finalize")
         if disconnected:
             runtime.error = runtime.error or "PI disconnected before finish"
+        if provider == "skill" and not failed and not disconnected:
+            policy.verify_complete(runtime.snapshot)
         extra = {
             "provider": provider,
             "piElapsedMs": pi_elapsed_ms,
@@ -129,6 +165,8 @@ async def serve(
             "decisionPolicy": policy.summary(),
             "errorDetails": error_details,
         }
+        if provider == "skill":
+            extra["recipeExecution"] = policy.summary()
         # Even a successful readback cannot turn a failed PI tool into a success.
         if failed or disconnected:
             extra["status"] = "failed"
@@ -162,7 +200,8 @@ async def serve(
                         finally:
                             record_failed_attempts(runtime, policy.attempts[start:])
                         if value.get("kind") == "decision":
-                            runtime.record_model(value)
+                            if value.get("modelRequest") is not False:
+                                runtime.record_model(value)
                             approved_choice, approved_observation = value["choice"], runtime.index
                         # refresh_required is a reply to PI, never an internal phone call.
                     elif command == "act":
@@ -181,9 +220,35 @@ async def serve(
                         except Exception:
                             reconcile_action(runtime)
                             raise
+                        if provider == "skill":
+                            # The final action can make PI stop without another
+                            # decide request; verify every readback immediately.
+                            delivery = value.get("execution", {"status": "applied"})
+                            if not isinstance(delivery, dict) or delivery.get("status") not in {
+                                "applied",
+                                "not_dispatched",
+                            }:
+                                raise DecisionPolicyError("Phone action delivery is uncertain")
+                            if delivery["status"] == "not_dispatched":
+                                # This releases only the pending reference. PI
+                                # must choose and dispatch again on the returned
+                                # observation; partial delivery never enters here.
+                                policy.not_dispatched(value, choice)
+                            else:
+                                policy.verify(value)
                         remember_original(value, base)
                     elif command == "finish":
-                        value = finish(request.get("piElapsedMs"))
+                        try:
+                            value = finish(request.get("piElapsedMs"))
+                        except DecisionPolicyError as error:
+                            # Persist the failed final verification before the
+                            # bridge receives a rejection and terminates us.
+                            failed = True
+                            message, error_details = safe_error(error, command)
+                            runtime.error = message
+                            finish(request.get("piElapsedMs"))
+                            finished = True
+                            raise
                         finished = True
                     else:
                         raise ValueError("Unknown worker command")
@@ -211,7 +276,9 @@ async def serve(
 
 async def main(argv=None, **serve_kwargs):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", choices=["jev", "deepseek", "jev-auto"], required=True)
+    parser.add_argument(
+        "--provider", choices=["jev", "deepseek", "jev-auto", "skill"], required=True
+    )
     parser.add_argument("--trial-id", required=True)
     args = parser.parse_args(argv)
     try:

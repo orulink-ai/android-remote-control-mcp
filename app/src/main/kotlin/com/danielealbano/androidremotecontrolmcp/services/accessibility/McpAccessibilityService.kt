@@ -12,6 +12,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import android.view.WindowManager
@@ -21,6 +22,8 @@ import android.view.accessibility.AccessibilityWindowInfo
 import com.danielealbano.androidremotecontrolmcp.services.control.ControlOverlayController
 import com.danielealbano.androidremotecontrolmcp.services.control.ControlSession
 import com.danielealbano.androidremotecontrolmcp.services.mcp.McpServerService
+import com.danielealbano.androidremotecontrolmcp.services.recording.WorkflowRecorder
+import com.danielealbano.androidremotecontrolmcp.services.screencapture.ScreenshotRequestGate
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -46,6 +49,8 @@ class McpAccessibilityService : AccessibilityService() {
         fun nodeCache(): AccessibilityNodeCache
 
         fun controlSession(): ControlSession
+
+        fun workflowRecorder(): WorkflowRecorder
     }
 
     private var serviceScope: CoroutineScope? = null
@@ -55,6 +60,10 @@ class McpAccessibilityService : AccessibilityService() {
     private var cacheInvalidationDebouncer: CacheInvalidationDebouncer? = null
 
     private var controlOverlay: ControlOverlayController? = null
+
+    private var workflowRecorder: WorkflowRecorder? = null
+
+    private val screenshotRequestGate = ScreenshotRequestGate(clockMs = SystemClock::uptimeMillis)
 
     @Volatile
     private var currentPackageName: String? = null
@@ -71,6 +80,8 @@ class McpAccessibilityService : AccessibilityService() {
         controlOverlay = createControlOverlay(scope)
         controlOverlay?.setEnabled(controlOverlayEnabled)
         nodeCache = resolveNodeCache()
+        workflowRecorder = resolveWorkflowRecorder()
+        workflowRecorder?.onServiceConnected()
         cacheInvalidationDebouncer =
             CacheInvalidationDebouncer(
                 scope = scope,
@@ -85,6 +96,7 @@ class McpAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+        workflowRecorder?.onAccessibilityEvent(event)
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
@@ -125,10 +137,13 @@ class McpAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         Log.w(TAG, "Accessibility service interrupted")
+        workflowRecorder?.pause()
     }
 
     override fun onDestroy() {
         Log.i(TAG, "Accessibility service destroying")
+        workflowRecorder?.onServiceDisconnected()
+        workflowRecorder = null
 
         // Stop any pending debounced invalidation before tearing down the scope it runs on.
         cacheInvalidationDebouncer?.cancel()
@@ -305,7 +320,11 @@ class McpAccessibilityService : AccessibilityService() {
             serviceInfo?.apply {
                 eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                     AccessibilityEvent.TYPE_WINDOWS_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                    AccessibilityEvent.TYPE_VIEW_CLICKED or
+                    AccessibilityEvent.TYPE_VIEW_LONG_CLICKED or
+                    AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+                    AccessibilityEvent.TYPE_VIEW_SCROLLED
                 feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
                 flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
@@ -332,6 +351,13 @@ class McpAccessibilityService : AccessibilityService() {
             null
         }
 
+    private fun resolveWorkflowRecorder(): WorkflowRecorder? =
+        runCatching {
+            EntryPointAccessors
+                .fromApplication(applicationContext, NodeCacheEntryPoint::class.java)
+                .workflowRecorder()
+        }.onFailure { Log.w(TAG, "Could not initialize workflow recording", it) }.getOrNull()
+
     /**
      * Takes a screenshot using AccessibilityService.takeScreenshot() API.
      * Does NOT require user consent.
@@ -340,45 +366,45 @@ class McpAccessibilityService : AccessibilityService() {
      * @return Bitmap of the screenshot, or null if capture failed or timed out.
      */
     suspend fun takeScreenshotBitmap(timeoutMs: Long = SCREENSHOT_TIMEOUT_MS): Bitmap? =
-        withContext(Dispatchers.Main) {
-            val overlay = controlOverlay
-            if (overlay == null) {
-                captureScreenshotBitmap(timeoutMs)
-            } else {
-                overlay.withoutVisuals { captureScreenshotBitmap(timeoutMs) }
+        // Bound the entire request, including dispatcher/queue/interval/overlay waits.
+        withTimeoutOrNull(timeoutMs) {
+            withContext(Dispatchers.Main) {
+                val capture: suspend () -> Bitmap? = {
+                    screenshotRequestGate.capture { captureScreenshotBitmap() }
+                }
+                val overlay = controlOverlay
+                if (overlay == null) capture() else overlay.withoutVisuals(capture)
             }
         }
 
-    private suspend fun captureScreenshotBitmap(timeoutMs: Long): Bitmap? =
-        withTimeoutOrNull(timeoutMs) {
-            suspendCancellableCoroutine { continuation ->
-                val executor = Executor { it.run() }
-                val callback =
-                    object : TakeScreenshotCallback {
-                        override fun onSuccess(screenshot: ScreenshotResult) {
-                            val bitmap =
-                                Bitmap.wrapHardwareBuffer(
-                                    screenshot.hardwareBuffer,
-                                    screenshot.colorSpace,
-                                )
-                            screenshot.hardwareBuffer.close()
-                            if (continuation.isActive) {
-                                continuation.resume(bitmap)
-                            } else {
-                                bitmap?.recycle()
-                            }
-                        }
-
-                        override fun onFailure(errorCode: Int) {
-                            Log.e(TAG, "Screenshot failed with error code: $errorCode")
-                            if (continuation.isActive) {
-                                continuation.resume(null)
-                            }
+    private suspend fun captureScreenshotBitmap(): Bitmap? =
+        suspendCancellableCoroutine { continuation ->
+            val executor = Executor { it.run() }
+            val callback =
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        val bitmap =
+                            Bitmap.wrapHardwareBuffer(
+                                screenshot.hardwareBuffer,
+                                screenshot.colorSpace,
+                            )
+                        screenshot.hardwareBuffer.close()
+                        if (continuation.isActive) {
+                            continuation.resume(bitmap)
+                        } else {
+                            bitmap?.recycle()
                         }
                     }
 
-                takeScreenshot(Display.DEFAULT_DISPLAY, executor, callback)
-            }
+                    override fun onFailure(errorCode: Int) {
+                        Log.e(TAG, "Screenshot failed with error code: $errorCode")
+                        if (continuation.isActive) {
+                            continuation.resume(null)
+                        }
+                    }
+                }
+
+            takeScreenshot(Display.DEFAULT_DISPLAY, executor, callback)
         }
 
     /**

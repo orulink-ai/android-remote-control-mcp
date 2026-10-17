@@ -15,9 +15,10 @@ import re
 import time
 from PIL import Image
 
-from own_mcp import OwnMcp, own_nodes, content_text
+from own_mcp import McpError, OwnMcp, own_nodes, content_text
 
 from config import output_dir
+from window_state import focused_package, verified_launcher
 
 BASE = output_dir()
 PACKAGE = "com.xingin.xhs"
@@ -86,13 +87,39 @@ def rebind_action(old, controls, before, after):
     return matches[0] if len(matches) == 1 else None
 
 
-def search_value(nodes):
+REFERENCE_SCREEN_SIZE = (1080, 2340)
+
+
+def screen_dimensions(text):
+    """Read physical tree coordinates, independently of resized MCP image pixels."""
+    matches = re.findall(r"^screen:(\d+)x(\d+)\b", text, flags=re.MULTILINE)
+    if len(matches) != 1:
+        raise RuntimeError("Physical screen dimensions missing or ambiguous")
+    width, height = map(int, matches[0])
+    if width <= 0 or height <= width:
+        raise RuntimeError("Portrait physical screen dimensions required")
+    return width, height
+
+
+def reference_bounds(bounds, screen_size):
+    """Normalize observation thresholds only; never replace actionable bounds."""
+    width, height = screen_size
+    if width <= 0 or height <= 0:
+        raise ValueError("Screen dimensions must be positive")
+    return [
+        value * REFERENCE_SCREEN_SIZE[index % 2] / screen_size[index % 2]
+        for index, value in enumerate(bounds)
+    ]
+
+
+def search_value(nodes, screen_size=REFERENCE_SCREEN_SIZE):
     for n in nodes:
+        bounds = reference_bounds(n["bounds"], screen_size)
         if (
             n["package"] == PACKAGE
             and "on" in n["flags"]
-            and 150 <= n["bounds"][0] <= 200
-            and n["bounds"][1] < 300
+            and 150 <= bounds[0] <= 200
+            and bounds[1] < 300
             and n["class"] in ["EditText", "TextView"]
         ):
             text = n["text"].strip()
@@ -142,10 +169,44 @@ def normalized_controls(nodes):
     return prune_controls(out)
 
 
-def icon_state(image, bounds, kind):
+def identify_toolbar_like(controls, favorite, screen_size):
+    """Resolve a unique like button adjacent to the verified favorite toolbar.
+
+    Numeric counts or explicit like semantics are required. Absolute x positions
+    are deliberately irrelevant; missing or competing evidence returns no target.
+    """
+    fx1, fy1, fx2, fy2 = favorite["bounds"]
+    favorite_height = fy2 - fy1
+    if favorite_height <= 0 or fx2 <= fx1 or screen_size[0] <= 0:
+        return None
+    label_pattern = re.compile(
+        r"(?:\d+(?:\.\d+)?(?:万|千|[kKwW])?|"
+        r"(?:已点赞|点赞|赞)(?:\s*\d+(?:\.\d+)?(?:万|千|[kKwW])?)?)"
+    )
+    candidates = []
+    for control in controls:
+        if control is favorite or control.get("method") not in {"click", "tap"}:
+            continue
+        if not label_pattern.fullmatch(control.get("label", "").strip()):
+            continue
+        x1, y1, x2, y2 = control["bounds"]
+        height = y2 - y1
+        if height <= 0 or x2 <= x1 or not 0.75 <= height / favorite_height <= 1.33:
+            continue
+        vertical_overlap = max(0, min(y2, fy2) - max(y1, fy1))
+        same_row = vertical_overlap / min(height, favorite_height) >= 0.8
+        adjacent_left = (x1 + x2) / 2 < fx1 and abs(fx1 - x2) <= screen_size[0] * 0.015
+        if same_row and adjacent_left:
+            candidates.append(control)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def icon_state(image, bounds, kind, screen_size=REFERENCE_SCREEN_SIZE):
     # Inner-left part of each toolbar button contains its icon. Excludes red node
     # rectangle borders and right-side numeric child nodes in annotated MCP images.
-    sx, sy = image.width / 1080, image.height / 2340
+    if screen_size[0] <= 0 or screen_size[1] <= 0:
+        raise ValueError("Screen dimensions must be positive")
+    sx, sy = image.width / screen_size[0], image.height / screen_size[1]
     x1, y1, x2, y2 = bounds
     w, h = x2 - x1, y2 - y1
     roi = (
@@ -293,8 +354,14 @@ class PhoneRuntime:
     def observe(self):
         result = self.call("android_get_screen_state", {"include_screenshot": True})
         text = content_text(result)
+        physical_size = screen_dimensions(text)
         nodes = own_nodes(text)
-        controls = normalized_controls(nodes)
+        focused_xhs = focused_package(text) == PACKAGE
+        controls = normalized_controls(nodes) if focused_xhs else []
+
+        def observed_bounds(control):
+            return reference_bounds(control["bounds"], physical_size)
+
         self.index += 1
         private_write(self.directory / f"observation-{self.index}.txt", text)
         image = None
@@ -306,14 +373,17 @@ class PhoneRuntime:
         texts = [
             n["description"] or n["text"]
             for n in nodes
-            if n["package"] == PACKAGE and "on" in n["flags"] and (n["description"] or n["text"])
+            if focused_xhs
+            and n["package"] == PACKAGE
+            and "on" in n["flags"]
+            and (n["description"] or n["text"])
         ]
-        in_xhs = any(n["package"] == PACKAGE and "on" in n["flags"] for n in nodes)
+        in_xhs = focused_xhs and any(n["package"] == PACKAGE and "on" in n["flags"] for n in nodes)
         detail = (
             any("作者小狮日记" in t for t in texts)
             and any(TITLE in t for t in texts)
             and any(
-                c["bounds"][1] > 2100 and c["label"].startswith(("收藏", "已收藏"))
+                observed_bounds(c)[1] > 2100 and c["label"].startswith(("收藏", "已收藏"))
                 for c in controls
             )
         )
@@ -322,9 +392,9 @@ class PhoneRuntime:
         query_fields = [
             c
             for c in controls
-            if c["bounds"][1] < 300
-            and 150 <= c["bounds"][0] <= 200
-            and 650 <= c["bounds"][2] <= 800
+            if observed_bounds(c)[1] < 300
+            and 150 <= observed_bounds(c)[0] <= 200
+            and 650 <= observed_bounds(c)[2] <= 800
             and c["label"]
         ]
         for c in query_fields:
@@ -342,11 +412,13 @@ class PhoneRuntime:
             else "feed"
             if in_xhs
             else "launcher"
+            if verified_launcher(text) is not None
+            else "transition"
         )
         state = {
             "kind": kind,
-            "observedQuery": search_value(nodes),
-            "queryMatches": search_value(nodes) == QUERY,
+            "observedQuery": search_value(nodes, physical_size) if in_xhs else None,
+            "queryMatches": in_xhs and search_value(nodes, physical_size) == QUERY,
             "firstTitleVisible": any(TITLE in t for t in texts),
             "liked": None,
             "collected": None,
@@ -356,18 +428,13 @@ class PhoneRuntime:
             favorite = next(
                 c
                 for c in controls
-                if c["bounds"][1] > 2100 and c["label"].startswith(("收藏", "已收藏"))
+                if observed_bounds(c)[1] > 2100 and c["label"].startswith(("收藏", "已收藏"))
             )
-            candidates = [
-                c
-                for c in controls
-                if c["bounds"][1] > 2100 and 400 < c["center"][0] < 665 and c["bounds"][2] < 700
-            ]
-            like = min(candidates, key=lambda c: abs(c["center"][0] - 555)) if candidates else None
+            like = identify_toolbar_like(controls, favorite, physical_size)
             if not like or image is None:
                 raise RuntimeError("Toolbar nodes or MCP screenshot missing")
             for control, role in [(like, "like"), (favorite, "collect")]:
-                ev = icon_state(image, control["bounds"], role)
+                ev = icon_state(image, control["bounds"], role, screen_size=physical_size)
                 state["evidence"][role] = ev
                 active = ev["active"]
                 state["liked" if role == "like" else "collected"] = active
@@ -389,13 +456,13 @@ class PhoneRuntime:
         }
         if kind == "search_results_other" and state["observedQuery"] != QUERY:
             actions.pop("WAIT", None)
-        if not in_xhs:
+        if kind == "launcher":
             actions["OPEN_APP"] = {
                 "method": "open",
                 "role": "navigation",
                 "label": "打开小红书 com.xingin.xhs",
             }
-        else:
+        elif in_xhs:
             for c in controls:
                 label = c["label"]
                 if (
@@ -404,7 +471,7 @@ class PhoneRuntime:
                     or label == "关注"
                 ):
                     continue
-                if kind == "search_input" and c["bounds"][1] > 300:
+                if kind == "search_input" and observed_bounds(c)[1] > 300:
                     continue
                 if detail and c["role"] not in ["like", "collect"]:
                     continue
@@ -429,6 +496,10 @@ class PhoneRuntime:
                 "observation": state,
                 "query": QUERY,
                 "expectedFirstTitle": TITLE,
+                "actionDescriptors": {
+                    choice: {key: action.get(key) for key in ("method", "role", "label")}
+                    for choice, action in actions.items()
+                },
                 "visibleControls": [
                     {"id": c.get("id"), "label": c["label"], "center": c.get("center")}
                     for c in actions.values()
@@ -476,15 +547,23 @@ class PhoneRuntime:
         method = action["method"]
         if method == "blocked":
             raise RuntimeError("Model selected BLOCKED")
+        successful_mutations = 0
+
+        def mutate(name, arguments):
+            nonlocal successful_mutations
+            result = self.call(name, arguments)
+            successful_mutations += 1
+            return result
+
         try:
             if method == "open":
-                self.call("android_open_app", {"package_id": PACKAGE})
+                mutate("android_open_app", {"package_id": PACKAGE})
             elif method == "click":
-                self.call("android_click_node", {"node_id": action["id"]})
+                mutate("android_click_node", {"node_id": action["id"]})
             elif method == "tap":
-                self.call("android_tap", {"x": action["center"][0], "y": action["center"][1]})
+                mutate("android_tap", {"x": action["center"][0], "y": action["center"][1]})
             elif method == "type":
-                self.call("android_type_clear_text", {"node_id": action["id"]})
+                mutate("android_type_clear_text", {"node_id": action["id"]})
                 # Clearing may change the opaque reference; resolve the current search field.
                 fresh = self.call("android_get_screen_state", {"include_screenshot": False})
                 field = next(
@@ -492,7 +571,7 @@ class PhoneRuntime:
                     for n in own_nodes(content_text(fresh))
                     if n["package"] == PACKAGE and "on" in n["flags"] and n["class"] == "EditText"
                 )
-                self.call(
+                mutate(
                     "android_type_append_text",
                     {
                         "node_id": field["id"],
@@ -503,11 +582,19 @@ class PhoneRuntime:
                 )
             elif method != "wait":
                 raise RuntimeError("Unsupported action")
-        except RuntimeError as error:
+        except McpError as error:
             # This MCP error guarantees target lookup failed before an action dispatch.
             # Re-observe and let PI request a new model decision; never repeat a toggle
             # automatically after a timeout or an ambiguous delivery error.
-            if "not found in accessibility tree" not in str(error):
+            canonical_stale = "Node not found in accessibility tree (ToolError; stage=tool_call)"
+            if (
+                error.stage != "tool_call"
+                or error.exception_type != "ToolError"
+                or str(error) != canonical_stale
+                or successful_mutations
+            ):
+                # A clear followed by a failed append is a partially applied group.
+                # Never label it as undelivered or retry it automatically.
                 raise
             self.stale_recoveries += 1
             self.operations.append(
@@ -535,7 +622,7 @@ class PhoneRuntime:
                         "label": action["label"],
                     }
                 )
-                self.call("android_click_node", {"node_id": rebound["id"]})
+                mutate("android_click_node", {"node_id": rebound["id"]})
                 wait_start = time.perf_counter()
                 time.sleep(0.4)
                 self.phases.append(
@@ -548,6 +635,19 @@ class PhoneRuntime:
                 return self.observe()
             fresh["state"]["lastActionError"] = (
                 "旧节点引用已失效，动作没有执行。请选择新观察中的节点重新完成当前阶段。"
+            )
+            execution = {
+                "status": "not_dispatched",
+                "reason": "stale_reference",
+                "choice": choice,
+                "intent": {key: action.get(key) for key in ("method", "role", "label")},
+            }
+            fresh["execution"] = execution
+            self.snapshot = fresh
+            self.operations.append({"name": "execution", "stage": self.progress.phase, **execution})
+            private_write(
+                self.directory / f"state-{self.index}.json",
+                json.dumps(fresh, ensure_ascii=False, indent=2),
             )
             return fresh
         wait_start = time.perf_counter()

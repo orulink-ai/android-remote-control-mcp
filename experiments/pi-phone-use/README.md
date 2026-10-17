@@ -1,8 +1,10 @@
 # PI phone-use 实验接入
 
-这是已跑通的专用实验模块，通过 PI extension 和自定义 `phone-benchmark` provider，让真实模型逐步选择手机动作，再由本项目 Android MCP 执行。它不是额外的 MCP server，也不是 skill；未注册到用户 PI 默认配置。
+这是专用实验模块，通过 PI extension 和自定义 `phone-benchmark` provider，让真实模型逐步选择手机动作，或复用配套的已验证步骤，再由本项目 Android MCP 执行。扩展本身不是额外的 MCP server；`skill` 模式加载由示教生成的 SKILL.md 配套 `recipe.json`。未注册到用户 PI 默认配置。
 
 支持 `jev`、`deepseek` 两种独立测试模式，以及显式选择的 `jev-auto` 模式：每个决策步骤优先 Jev，模型失败后经 PI 刷新观察，再由 DeepSeek 兜底一次。任务固定为小红书搜索“小狮日记”、打开指定首帖、点赞、收藏、取消点赞、取消收藏。阶段目标、候选过滤和截图颜色验证器对两种模型共用，不是任意自然语言任务的通用 phone agent。
+
+新增的 `skill` 是独立模式：从一次成功 PI 示教中提炼步骤，在每次新观察中重新定位并校验前后条件；正常路径无需模型密钥或 HTTP client，界面漂移时停止。它尚不自动把 Jev / DeepSeek 的恢复动作接回配方。录制 UI 的完整产品方向见 [产品方案](../../docs/plans/phone-record-replay.md)。
 
 研究结果和计时边界见 [阶段记录](../../docs/research/pi-phone-use-20261017.md)。2026-10-17 的真实测试基于归档前的冻结代码；本目录另做了路径配置、会话释放与错误诊断修复，**没有把修复后的代码冒充成原测速代码重新计时**。
 
@@ -51,6 +53,8 @@ experiments/pi-phone-use/.venv/bin/python -m pytest -q experiments/pi-phone-use
 | `PHONE_BENCH_MODE` | `warm` 持久 client 或 `cold` 每请求新建 client；正式比较使用 `warm` |
 | `PHONE_BENCH_JEV_TIMEOUT` | `jev-auto` 中 Jev 单次决策的整体时限，秒；默认 `5.0` |
 | `PHONE_BENCH_DEEPSEEK_TIMEOUT` | `jev-auto` 中 DeepSeek 单次兜底决策的整体时限，秒；默认 `15.0` |
+| `PHONE_BENCH_RECORDING` | 设为 `1` 时从真实 PI 动作保存配对示教 `TRIAL/recording.json`；默认不记录 |
+| `PHONE_BENCH_RECIPE` | `skill` 模式读取的 `recipe.json`；在手机重置或录像开始之前校验内容和适配器任务身份 |
 
 MCP 配置只读取指定 server 的 `headers`，URL 单独显式配置，避免沿用失效的手机 LAN 地址。也可连接无需鉴权的本机测试服务；需要鉴权的真实服务必须在私有配置中提供正确 headers。
 
@@ -78,6 +82,57 @@ adb -s "$PHONE_BENCH_DEVICE" forward tcp:18080 tcp:8080
 每轮 trial ID 必须唯一，已有产物不覆盖。同一时刻只运行一个实机流程。首帖必须是代码固定的目标标题，否则不应将停止解释成模型慢；搜索排序、APP 布局或分辨率改变后，应先调整与验证专用任务适配。
 
 正式比较前需确认目标帖为未点赞、未收藏，记录原状态；每轮结束检查最终两项未激活，失败轮先检查已完成阶段再恢复。`reset_baseline.py` 仅适用于当前已打开且已验证的目标详情页，属于计时外清理，不能替代完整任务。原状态恢复由实验操作者在结束后验证，不由下一轮盲目重放完成。
+
+## 示教生成与 PI 复用
+
+参考 [官方 Record & Replay](https://learn.chatgpt.com/docs/extend/record-and-replay) 的演示、整理、检查和复用方式，本阶段提供以下独立实验路径。所有手机动作仍由真实 PI 的 `phone_observe` / `phone_action` 工具驱动，生成器不控制手机：
+
+```bash
+export PHONE_BENCH_OUTPUT_DIR="$PWD/artifacts/pi-phone-use/record-replay-20261018"
+
+# 完整成功的 PI 示教，记录每步之前/之后的共同观察。
+PHONE_BENCH_RECORDING=1 "$PHONE_BENCH_PYTHON" experiments/pi-phone-use/run_pi_trial.py jev demo
+
+# 从实际记录生成 SKILL.md、recipe.json 和 generation.json；不调用模型。
+"$PHONE_BENCH_PYTHON" experiments/pi-phone-use/workflow.py compile \
+  "$PHONE_BENCH_OUTPUT_DIR/demo/recording.json" \
+  "$PHONE_BENCH_OUTPUT_DIR/skill-bundle"
+
+export PHONE_BENCH_RECIPE="$PHONE_BENCH_OUTPUT_DIR/skill-bundle/recipe.json"
+"$PHONE_BENCH_PYTHON" experiments/pi-phone-use/run_pi_trial.py skill rr-r1-skill
+
+# 额外录像轮，保留完整原速流程，不并入正式三轮。
+"$PHONE_BENCH_PYTHON" experiments/pi-phone-use/record_pi_trial.py skill video-skill \
+  --report-dir "$PHONE_BENCH_OUTPUT_DIR/report"
+```
+
+编译器保留来源摘要，要求动作与当时可用控件匹配、前后观察连续且任务身份一致，完成状态有证据。执行时仅使用当前观察中的控件引用；每步校验后置条件，最终还需检查所有步骤和最终状态。配方内容修改后旧验证失效。当前适配器固定已示教的搜索词与帖子，更换输入需要新示教；不支持任意参数直接替换。
+
+示教中的导航或搜索输入之后，若先出现过渡界面再通过 `WAIT` 到达稳定结果，编译器会保留这些已观察的过渡状态（`settleStates`）和最终后置条件。复用时页面直接就绪即可完成该步；只在已示教过的过渡状态继续等待，单步最多 8 次，不机械复制示教的 WAIT 次数，也不重发导航、点赞或收藏动作。共同控制器的短等待、重新读屏和结果验证仍计入耗时；这不是取消验证或固定坐标快放。未知界面、预算耗尽或动作结果不确定时停止。
+
+控制器能够证明尚未派发任何变更工具时，可以返回 `execution.status=not_dispatched`：同时绑定旧选择、语义意图和 `stale_reference` 原因。Skill 策略核对任务与当前步骤前置条件后，仅释放待执行引用、不前进步骤；下一次由 PI 重新选择并通过新的 `phone_action` 派发，单步最多 3 次。共同控制器原有的严格 click 失效处理另可在同一次 `phone_action` 内重绑定一次，前提是角色、几何、标签、目标及状态完全相同；此路径由两组共用。两类恢复耗时均计入全程，不算模型 API 调用。部分执行、投递不确定或未知状态不能进入这些路径；即使页面碰巧满足后置条件，也必须停止，不能靠结果相似掩盖投递异常。未携带投递标记或显式 `applied` 时仍走正常结果验证。
+
+手机 App 无障碍录制导出可用另一条命令生成可读草稿：
+
+```bash
+"$PHONE_BENCH_PYTHON" experiments/pi-phone-use/workflow.py import-android \
+  path/to/exported-workflow.json \
+  "$PHONE_BENCH_OUTPUT_DIR/android-draft"
+```
+
+**App 原始事件只生成 `needs-verification` 草稿，不生成可直接执行的配方。** 手机导出、电脑导入、PI 配对示教/验证仍需人工发起，尚未打通 App 内一键生成已验证 Skill。`verified-demonstration` 表示成功示教已被共同观察器校验，不代表人工审阅已经发生。产品原型中的参数编辑、浮条和自动恢复不等于当前已实现能力。
+
+新对比报告读取预设的 `rr-r{1,2,3}-jev` 与 `rr-r{1,2,3}-skill` 六轮。将技能包中的 `generation.json` 放在运行数据根目录，可单列生成成本；额外录像 ID 为 `video-jev` / `video-skill`：
+
+运行数据根目录的 `generation.json` 还应由实验操作者或编排器显式记录 `sourceDemoTrialId`（例如 `demo-v2`）及 `demonstrationMs`，关联实际采用的示教轮。来源未声明时报告不把旧 `demo` 轮自动当成配方来源，早期失败或已淘汰的示教不混入正式统计。
+
+```bash
+"$PHONE_BENCH_PYTHON" experiments/pi-phone-use/build_record_replay_report.py \
+  --base "$PHONE_BENCH_OUTPUT_DIR" \
+  --report-dir "$PHONE_BENCH_OUTPUT_DIR/report"
+```
+
+输出 `record-replay.html` 与脱敏 `record-replay-data.json`，视频采用相对路径 `phone-use-videos/jev-full-flow.mp4` 和 `phone-use-videos/skill-full-flow.mp4`。缺失实测保持 pending；正式轮未完成或任一模式不足两次有效成功，不发布加速收益。报告中的交互原型、App 实机截图和性能证据分区，不能互相替代。
 
 ## 录制与报告
 

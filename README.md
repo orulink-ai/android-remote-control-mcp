@@ -77,6 +77,17 @@ See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the full tool reference with inpu
 - Storage location management (automatic locations + SAF authorization for file tools)
 - Server log viewer (MCP tool calls, tunnel events)
 - Headless setup via ADB (configure, grant permissions, start/stop server without UI)
+- Record Xiaohongshu accessibility events, pause, review and export a local workflow draft
+
+### PI Workflow Recording Preview
+
+The app's recording entry captures semantic accessibility events. Exported JSON remains a draft:
+paired before/after observations are required before it can become an executable recipe.
+The [PI phone workflow experiments](experiments/pi-phone-use/README.md) generate `SKILL.md` and
+verified steps from an actual PI demonstration, then resolve fresh controls and verify every result
+on replay. The current adapter uses a fixed Xiaohongshu task and stops on unrecognized changes.
+See the [product plan](docs/plans/phone-record-replay.md) for the recording and review experience,
+and the [Redmi study](docs/results/phone-record-replay-20261018.md) for measured results and limitations.
 
 ### Comparison with Alternatives
 

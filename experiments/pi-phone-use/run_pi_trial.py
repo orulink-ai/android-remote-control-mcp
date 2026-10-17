@@ -12,6 +12,7 @@ import time
 
 from config import decision_timeouts, output_dir, python_executable
 from replay_worker import private_json, validate_trial_id
+from window_state import SUPPORTED_LAUNCHERS as SUPPORTED_LAUNCHERS, verified_launcher
 
 RUNTIME_DIR = Path(__file__).resolve().parent
 BASE = output_dir()
@@ -50,20 +51,42 @@ def reset_phone(serial):
     client = OwnMcp()
     try:
         client.call("android_press_key", {"key": "HOME"})
-        time.sleep(0.3)
-        state = content_text(client.call("android_get_screen_state", {"include_screenshot": False}))
-        if "pkg:com.sec.android.app.launcher" not in state:
+        # HOME is dispatched once. Only readback is repeated while the launcher
+        # transition settles, entirely outside the timed PI loop.
+        for _ in range(3):
+            time.sleep(0.3)
+            state = content_text(
+                client.call("android_get_screen_state", {"include_screenshot": False})
+            )
+            if verified_launcher(state) is not None:
+                break
+        else:
             raise RuntimeError("Android launcher not verified; trial not started")
     finally:
         client.close()
     return (time.perf_counter() - started) * 1000
 
 
-def launch(provider, trial_id, *, base=None, timeout=230):
-    if provider not in {"jev", "deepseek", "jev-auto"}:
+def validate_configuration(provider):
+    """Validate replay inputs and deadlines before any phone mutation."""
+    if provider not in {"jev", "deepseek", "jev-auto", "skill"}:
         raise ValueError("Invalid provider")
-    # Reject invalid auto budgets before reset_phone can mutate the device.
     budgets = decision_timeouts() if provider == "jev-auto" else None
+    if provider == "skill":
+        from controller import QUERY, TITLE
+        from workflow import load_recipe
+
+        recipe_path = os.environ.get("PHONE_BENCH_RECIPE", "")
+        if not recipe_path.strip():
+            raise ValueError("PHONE_BENCH_RECIPE is required for skill mode")
+        recipe = load_recipe(Path(recipe_path).expanduser())
+        if recipe.get("task") != {"query": QUERY, "expectedFirstTitle": TITLE}:
+            raise ValueError("Recipe task is unsupported by this phone adapter")
+    return budgets
+
+
+def launch(provider, trial_id, *, base=None, timeout=230):
+    budgets = validate_configuration(provider)
     base = Path(base if base is not None else output_dir()).resolve()
     validate_new_trial(trial_id, base)
     serial = require_device()
@@ -113,7 +136,13 @@ def launch(provider, trial_id, *, base=None, timeout=230):
         "trialId": trial_id,
         "provider": provider,
         "decisionMode": provider,
-        "decisionPolicyDetails": "jev-first-deepseek-once" if budgets else "single-model",
+        "decisionPolicyDetails": (
+            "recorded-skill-stop-on-drift"
+            if provider == "skill"
+            else "jev-first-deepseek-once"
+            if budgets
+            else "single-model"
+        ),
         "excludedResetMs": setup_ms,
         "piSession": str(session),
         "piEvents": str(stdout),
@@ -176,7 +205,7 @@ def launch(provider, trial_id, *, base=None, timeout=230):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("provider", choices=["jev", "deepseek", "jev-auto"])
+    parser.add_argument("provider", choices=["jev", "deepseek", "jev-auto", "skill"])
     parser.add_argument("trial_id")
     args = parser.parse_args(argv)
     result = launch(args.provider, args.trial_id)
