@@ -12,7 +12,7 @@ import copy
 import math
 import time
 
-from providers import ProviderError
+from providers import ProviderError, safe_http_status
 
 
 class DecisionPolicyError(RuntimeError):
@@ -171,7 +171,11 @@ class DecisionPolicy:
             self._terminal = True
             if self.mode != "jev-auto" and isinstance(failure, ProviderError):
                 raise failure
-            raise DecisionPolicyError("Decision request failed; no action selected") from None
+            stopped = DecisionPolicyError("Decision request failed; no action selected")
+            status = safe_http_status(getattr(failure, "httpStatus", None))
+            if status is not None:
+                stopped.httpStatus = status
+            raise stopped from None
 
     async def _attempt(self, backend, state, options):
         started = self.clock()
@@ -226,6 +230,9 @@ class DecisionPolicy:
                 else "ProviderError",
                 stage=error.stage if error.stage in _SAFE_STAGES else "provider_request",
             )
+            status = safe_http_status(getattr(error, "httpStatus", None))
+            if status is not None:
+                audit["httpStatus"] = status
         except Exception as error:
             if isinstance(error, TimeoutError) and deadline is not None and deadline.expired():
                 failure = error

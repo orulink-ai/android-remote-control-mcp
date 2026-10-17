@@ -46,15 +46,21 @@ OPERATIONS = {
 }
 
 
+def safe_http_status(value):
+    return value if type(value) is int and 100 <= value <= 599 else None
+
+
 class ProviderError(RuntimeError):
     def __init__(
-        self, message: str, *, network: dict, latency_ms: float, exception_type: str, stage: str
+        self, message: str, *, network: dict, latency_ms: float, exception_type: str, stage: str,
+        http_status: int | None = None,
     ):
         super().__init__(f"{message} ({exception_type}; stage={stage})")
         self.network = network
         self.latencyMs = latency_ms
         self.exception_type = exception_type
         self.stage = stage
+        self.httpStatus = safe_http_status(http_status)
 
 
 class NetworkTrace:
@@ -217,13 +223,15 @@ def _jev_payload(state, options, compact, style):
     return {"model": JEV_MODEL, "state": rendered_state, "questions": questions}
 
 
-def _chat_payload(state, options):
+def _chat_payload(state, options, *, providerFallbacks=False):
+    if type(providerFallbacks) is not bool:
+        raise ValueError("Provider fallbacks must be boolean")
     return {
         "model": DEEPSEEK_MODEL,
         "temperature": 0,
         "max_tokens": 256,
         "reasoning": {"enabled": False},
-        "provider": {"require_parameters": True, "allow_fallbacks": False},
+        "provider": {"require_parameters": True, "allow_fallbacks": providerFallbacks},
         "messages": [
             {"role": "system", "content": SYSTEM_INSTRUCTIONS},
             {
@@ -264,6 +272,7 @@ class DecisionClient:
         *,
         decisionStyle="flat",
         timeout=30.0,
+        providerFallbacks=False,
     ):
         if not isinstance(key, str) or not key.strip() or key != key.strip():
             raise ValueError("Explicit nonblank API key required")
@@ -271,12 +280,14 @@ class DecisionClient:
             mode not in {"warm", "cold"}
             or type(compact) is not bool
             or decisionStyle not in {"flat", "heads"}
+            or type(providerFallbacks) is not bool
         ):
             raise ValueError("Invalid session configuration")
         if not isinstance(timeout, (float, int)) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("Invalid timeout")
         self.key, self.mode, self.compact = key, mode, compact
         self.transport, self.decisionStyle, self.timeout = transport, decisionStyle, timeout
+        self.providerFallbacks = providerFallbacks
         self._client = None
         self._closed = False
         self._lock = asyncio.Lock()
@@ -329,7 +340,7 @@ class DecisionClient:
         payload = (
             _jev_payload(state, options, self.compact, self.decisionStyle)
             if is_jev
-            else _chat_payload(state, options)
+            else _chat_payload(state, options, providerFallbacks=self.providerFallbacks)
         )
         async with self._lock:
             if self._closed:
@@ -462,6 +473,7 @@ class DecisionClient:
                 latency_ms=elapsed,
                 exception_type=type(error).__name__,
                 stage=stage,
+                http_status=response.status_code if response is not None else None,
             ) from None
         finally:
             if self.mode == "cold" and client is not None:

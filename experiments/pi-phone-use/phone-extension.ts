@@ -21,7 +21,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const API = "phone-benchmark-stdio";
-type Backend = "jev" | "deepseek" | "jev-auto" | "skill";
+type Backend = "jev" | "deepseek" | "jev-auto" | "skill" | "skill-auto" | "terminal-auto";
 type Command = "observe" | "act" | "decide" | "finish";
 type Observation = { state: Record<string, unknown>; options: Record<string, string>; done: boolean };
 type Pending = { resolve(value: any): void; reject(error: Error): void; cleanup(): void };
@@ -31,6 +31,7 @@ export class WorkerBridge {
   private pending = new Map<string, Pending>();
   private buffer = "";
   private failed = false;
+  terminalDiagnostic: string | undefined;
 
   readonly backend: Backend;
   private providerEnv: Record<string, string>;
@@ -42,7 +43,7 @@ export class WorkerBridge {
   private start() {
     if (this.failed) throw new Error("Phone worker unavailable");
     if (this.child) return;
-    const trial = process.env.PHONE_BENCH_TRIAL;
+    const trial = this.providerEnv.PHONE_BENCH_TRIAL ?? process.env.PHONE_BENCH_TRIAL;
     if (!trial) throw new Error("PHONE_BENCH_TRIAL is required");
     const python = process.env.PHONE_BENCH_PYTHON ?? "python3";
     const worker = process.env.PHONE_BENCH_WORKER ?? join(directory, "worker.py");
@@ -73,7 +74,20 @@ export class WorkerBridge {
       if (!entry) return this.kill();
       this.pending.delete(String(reply.id));
       entry.cleanup();
-      if (reply.error !== undefined || !("result" in reply)) entry.reject(new Error("Phone worker rejected command"));
+      if (reply.error !== undefined || !("result" in reply)) {
+        const messages: Record<string, string> = {
+          LOCKED: "手机当前处于锁屏状态，请手动解锁后重试；未尝试解锁。",
+          UNKNOWN_FOCUS: "无法确认手机当前前台窗口，已停止。",
+          OPEN_TIMEOUT: "应用启动后仍未确认目标前台，已停止；请检查手机界面。",
+          BLOCKED: "当前界面没有可确认的下一步动作，已停止；请检查手机界面。",
+          NO_PROGRESS: "相同操作多次没有进展，已停止；请先检查当前手机界面。",
+        };
+        const code = reply.errorDetails?.code;
+        if (reply.errorDetails?.exceptionType === "TerminalRuntimeError" && typeof code === "string" && Object.hasOwn(messages, code)) {
+          this.terminalDiagnostic = messages[code];
+        }
+        entry.reject(new Error(this.terminalDiagnostic ?? "Phone worker rejected command"));
+      }
       else entry.resolve(reply.result);
     }
   }
@@ -161,11 +175,52 @@ function latestObservation(context: TranscriptContext): Observation | undefined 
   }
 }
 
-export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText: string }) {
+export function terminalGoal(context: TranscriptContext): string {
+  for (let i = context.messages.length - 1; i >= 0; i--) {
+    const message: any = context.messages[i];
+    if (message.role !== "user") continue;
+    const text = typeof message.content === "string" ? message.content : message.content
+      .filter((block: any) => block.type === "text").map((block: any) => block.text).join("\n");
+    if (text.trim() && text.length <= 4000) return text.trim();
+    throw new Error("A bounded user phone request is required");
+  }
+  throw new Error("A user phone request is required");
+}
+
+function terminalFailure(result: any): string | undefined {
+  const attempts = result?.decisionPolicy?.attempts;
+  const last = Array.isArray(attempts) ? attempts.at(-1) : undefined;
+  if (last?.backend === "deepseek" && last.status !== "success" && last.httpStatus === 429) {
+    return "DeepSeek 兜底请求受到限流（HTTP 429），手机任务已停止；请稍后重试。";
+  }
+  return undefined;
+}
+
+function terminalSummary(result: any): string {
+  if (result?.status !== "success") return terminalFailure(result) ?? "手机任务未完成，已停止；请查看本次运行记录。";
+  const policy = result.decisionPolicy ?? {};
+  const attempts = Array.isArray(policy.attempts) ? policy.attempts : [];
+  const jev = attempts.filter((a: any) => a.backend === "jev").length;
+  const deepseek = attempts.filter((a: any) => a.backend === "deepseek").length;
+  const steps = result.recipeExecution?.verifiedSteps;
+  const lines = ["手机任务已完成并验证。", "控制通道：本项目 Android MCP；未使用 ADB。",
+    `录制 Skill 验证：${typeof steps === "number" ? `${steps} 步` : "本次未使用"}；Jev 请求 ${jev} 次；DeepSeek 兜底 ${deepseek} 次。`];
+  const observation = result.finalState ?? {};
+  if (observation.locked === true) lines.push("手机当前处于锁屏状态；本次仅读取锁屏，请解锁后再操作应用。");
+  if (observation.focusedPackage) lines.push(`当前应用：${observation.focusedPackage}`);
+  if (result.terminalTask?.kind === "read" && Array.isArray(observation.visibleTexts)) {
+    lines.push(`屏幕文字：${observation.visibleTexts.slice(0, 12).join("；").slice(0, 400)}`);
+  }
+  return lines.join("\n");
+}
+
+export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText: string; terminal?: boolean }) {
   let bridge: WorkerBridge | undefined;
   let startedAt: number | undefined;
   let bootstrapSent = false;
   let failed = false;
+  let finalized: any;
+  const providerId = config.terminal ? "phone-control" : "phone-benchmark";
   const worker = (backend?: Backend, providerEnv?: Record<string, string>) => {
     if (!bridge) {
       if (!backend) throw new Error("Provider must select the phone backend first");
@@ -177,15 +232,15 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
 
   pi.on("agent_start", async () => {
     bridge?.kill(); bridge = undefined;
-    startedAt = performance.now(); bootstrapSent = false; failed = false;
+    startedAt = performance.now(); bootstrapSent = false; failed = false; finalized = undefined;
     pi.appendEntry("phone-benchmark-start", { trialId: process.env.PHONE_BENCH_TRIAL, execution: "pi-agent-loop" });
   });
   pi.on("agent_end", async () => {
     if (startedAt !== undefined) {
       const piElapsedMs = performance.now() - startedAt;
-      const result = await bridge?.finish(piElapsedMs);
+      const result = finalized ?? await bridge?.finish(piElapsedMs);
       pi.appendEntry("phone-benchmark-finish", {
-        trialId: process.env.PHONE_BENCH_TRIAL, piElapsedMs,
+        trialId: result?.trialId ?? process.env.PHONE_BENCH_TRIAL, piElapsedMs,
         status: result?.status ?? "worker_unavailable", modelCalls: result?.modelCalls,
         operations: result?.operations, milestones: result?.milestones,
         decisionPolicy: result?.decisionPolicy,
@@ -194,6 +249,36 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
     }
   });
   pi.on("session_shutdown", async () => { bridge?.kill(); });
+  if (config.terminal) {
+    pi.on("input", async (event) => {
+      // This exact command names the fixed verified recipe. Normalize before
+      // PI expands the explanatory SKILL.md; never infer authorization from
+      // arbitrary skill prose or silently ignore user-supplied arguments.
+      if (event.text.trim() === "/skill:xhs-recorded-roundtrip") {
+        return { action: "transform", text: "执行录制的小红书完整闭环", images: event.images };
+      }
+      return { action: "continue" };
+    });
+    pi.on("session_start", async (_event, ctx) => {
+      if (ctx.hasUI) ctx.ui.setStatus("phone-control", "Skill 复用 → Jev → DeepSeek · 本项目 Android MCP · 无 ADB");
+    });
+    pi.registerCommand("phone-replay", {
+      description: "运行录制的小红书完整闭环：小狮日记 → 点赞收藏 → 取消两项",
+      handler: async (args, ctx) => {
+        if (args.trim()) {
+          ctx.ui.notify("/phone-replay 当前不接受参数；没有执行。请核对固定搜索词和目标帖子后使用无参数命令。", "warning");
+          return;
+        }
+        pi.sendUserMessage("执行录制的小红书完整闭环");
+      },
+    });
+    pi.registerCommand("phone-status", {
+      description: "显示手机决策路径与已配置的录制 Skill",
+      handler: async (_args, ctx) => {
+        ctx.ui.notify(`手机决策：录制 Skill 命中优先；否则 Jev，失败重读后 DeepSeek。\n执行通道：本项目 Android MCP；无 ADB。\n配方：${process.env.PHONE_BENCH_RECIPE ?? "未配置"}\n支持：读屏、打开 App、小红书搜索、/phone-replay 固定闭环。`, "info");
+      },
+    });
+  }
 
   pi.registerTool({
     name: "phone_observe", label: "Observe phone",
@@ -215,11 +300,11 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
     },
   });
 
-  pi.registerProvider("phone-benchmark", {
-    name: "Phone benchmark (local worker)",
+  pi.registerProvider(providerId, {
+    name: config.terminal ? "Phone control · Skill / Jev / DeepSeek" : "Phone benchmark (local worker)",
     baseUrl: "stdio://phone-benchmark", apiKey: "local-worker-no-api-key", api: API,
-    models: ["jev", "deepseek", "jev-auto", "skill"].map((id) => ({
-      id, name: id === "skill" ? "Recorded phone skill with verified steps" : id === "jev-auto" ? "Jev 优先，DeepSeek 兜底" : id === "jev" ? "Jev 1.14 phone decisions" : "DeepSeek V4.1 Flash phone decisions",
+    models: (config.terminal ? ["auto"] : ["jev", "deepseek", "jev-auto", "skill", "skill-auto"]).map((id) => ({
+      id, name: id === "auto" ? "Jev + 录制 Skill → DeepSeek" : id === "skill-auto" ? "Recorded skill → Jev → DeepSeek" : id === "skill" ? "Recorded phone skill with verified steps" : id === "jev-auto" ? "Jev 优先，DeepSeek 兜底" : id === "jev" ? "Jev 1.14 phone decisions" : "DeepSeek V4.1 Flash phone decisions",
       reasoning: false, input: ["text"], contextWindow: 1_000_000, maxTokens: 256,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     })),
@@ -233,8 +318,15 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
         try {
           if (failed) throw new Error("Phone trial already failed");
           if (options?.signal?.aborted) throw new Error("Aborted");
-          if (model.id !== "jev" && model.id !== "deepseek" && model.id !== "jev-auto" && model.id !== "skill") throw new Error("Unsupported phone model");
-          const child = worker(model.id, options?.env);
+          if (config.terminal ? model.id !== "auto" : !["jev", "deepseek", "jev-auto", "skill", "skill-auto"].includes(model.id)) throw new Error("Unsupported phone model");
+          const backend = config.terminal ? "terminal-auto" : model.id as Backend;
+          const environment = config.terminal ? {
+            ...options?.env,
+            PHONE_TERMINAL_GOAL: terminalGoal(context),
+            PHONE_BENCH_TRIAL: `terminal-${randomUUID()}`,
+          } : options?.env;
+          const child = worker(backend, environment);
+          if (config.terminal && !bootstrapSent) pi.appendEntry("phone-terminal-route", { goal: terminalGoal(context), provider: providerId, transport: "own-android-mcp", adb: false });
           const abort = () => child.kill();
           options?.signal?.addEventListener("abort", abort, { once: true });
           try {
@@ -258,7 +350,7 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
                 if (decision?.kind === "refresh_required") {
                   // A refresh is a real PI tool call. The worker cannot replace the
                   // snapshot silently or dispatch a cached choice during fallback.
-                  if (!["jev-auto", "skill"].includes(model.id) || decision.kind !== "refresh_required" ||
+                  if (!["jev-auto", "skill-auto", "terminal-auto"].includes(backend) || decision.kind !== "refresh_required" ||
                       decision.fallbackPending !== true || Object.hasOwn(decision, "choice")) {
                     throw new Error("Invalid fallback observation request");
                   }
@@ -281,7 +373,7 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
                     servedModel: decision.servedModel, usage: decision.usage, cost: decision.cost,
                     selectedBackend: decision.selectedBackend, fallbackUsed: decision.fallbackUsed,
                     attemptId: decision.attemptId,
-                    modelRequest: decision.modelRequest,
+                    modelRequest: decision.modelRequest, recipeRecovery: decision.recipeRecovery,
                   });
                   name = "phone_action"; args = { choice: decision.choice };
                 }
@@ -290,9 +382,11 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
             if (options?.signal?.aborted) throw new Error("Aborted");
             stream.push({ type: "start", partial: output });
             if (done) {
+              if (config.terminal) finalized = await child.finish(performance.now() - (startedAt ?? performance.now()));
+              const completedText = config.terminal ? terminalSummary(finalized) : config.terminalText;
               output.content.push({ type: "text", text: "" });
               stream.push({ type: "text_start", contentIndex: 0, partial: output });
-              output.content[0] = { type: "text", text: config.terminalText };
+              output.content[0] = { type: "text", text: completedText };
               stream.push({ type: "text_delta", contentIndex: 0, delta: output.content[0].text, partial: output });
               stream.push({ type: "text_end", contentIndex: 0, content: output.content[0].text, partial: output });
               output.stopReason = "stop";
@@ -311,10 +405,26 @@ export function registerPhoneBenchmark(pi: ExtensionAPI, config: { terminalText:
           } finally { options?.signal?.removeEventListener("abort", abort); }
         } catch {
           failed = true;
+          if (config.terminal && !options?.signal?.aborted && bridge?.alive) {
+            try { finalized = await bridge.finish(performance.now() - (startedAt ?? performance.now())); }
+            catch { /* Keep only static diagnostics if finalization is unavailable. */ }
+          }
           // Never include worker stderr, request contents, API responses, or keys.
-          output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-          output.errorMessage = "Phone benchmark bridge stopped; inspect the worker trial report before restarting.";
-          stream.push({ type: "error", reason: output.stopReason, error: output });
+          const diagnostic = config.terminal
+            ? bridge?.terminalDiagnostic ?? terminalFailure(finalized) ?? "手机任务已停止。当前支持读屏、打开 App、小红书搜索、执行录制的小红书完整闭环；请查看本次记录，勿盲目重复。"
+            : "Phone benchmark bridge stopped; inspect the worker trial report before restarting.";
+          if (config.terminal && !options?.signal?.aborted) {
+            // A bounded phone task failure is a final task result. Reporting an
+            // LLM rate-limit error here would let PI auto-retry the entire task,
+            // including actions that may already have changed the phone.
+            output.content = [{ type: "text", text: diagnostic }];
+            output.stopReason = "stop";
+            stream.push({ type: "done", reason: "stop", message: output });
+          } else {
+            output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+            output.errorMessage = diagnostic;
+            stream.push({ type: "error", reason: output.stopReason, error: output });
+          }
         } finally { stream.end(); }
       })();
       return stream;

@@ -2,7 +2,9 @@
 
 import re
 
-SUPPORTED_LAUNCHERS = frozenset({"com.sec.android.app.launcher", "com.miui.home"})
+SUPPORTED_LAUNCHERS = frozenset({
+    "com.sec.android.app.launcher", "com.miui.home", "com.miui.personalassistant",
+})
 
 
 def focused_package(state):

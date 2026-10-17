@@ -19,6 +19,52 @@ BASE = output_dir()
 PROMPT = "请实际执行手机闭环测试：从Android桌面打开小红书，搜索小狮日记，打开第一篇帖子，依次点赞、收藏、取消点赞、取消收藏，回读验证最终未点赞、未收藏。只使用phone_observe和phone_action。"
 
 
+class LaunchTerminated(KeyboardInterrupt):
+    """SIGTERM must unwind launch cleanup before the CLI exits."""
+
+
+def stop_owned_group(process, *, grace=3.0):
+    """Stop only the PI group created with start_new_session=True, then reap PI.
+
+    PI can exit before its Python worker. Probe the group, not just the parent,
+    allowing bounded cleanup before killing remaining descendants. No fallback
+    signal is sent to this launcher's group or to any unrelated process.
+    """
+    try:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + grace
+        while True:
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=min(0.1, remaining))
+                except subprocess.TimeoutExpired:
+                    pass
+            time.sleep(min(0.05, remaining))
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    finally:
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=1)
+
+
 def require_device(serial=None):
     value = serial if serial is not None else os.environ.get("PHONE_BENCH_DEVICE", "")
     if not value or not value.strip() or value.startswith("-"):
@@ -69,10 +115,10 @@ def reset_phone(serial):
 
 def validate_configuration(provider):
     """Validate replay inputs and deadlines before any phone mutation."""
-    if provider not in {"jev", "deepseek", "jev-auto", "skill"}:
+    if provider not in {"jev", "deepseek", "jev-auto", "skill", "skill-auto"}:
         raise ValueError("Invalid provider")
-    budgets = decision_timeouts() if provider == "jev-auto" else None
-    if provider == "skill":
+    budgets = decision_timeouts() if provider in {"jev-auto", "skill-auto"} else None
+    if provider in {"skill", "skill-auto"}:
         from controller import QUERY, TITLE
         from workflow import load_recipe
 
@@ -137,7 +183,9 @@ def launch(provider, trial_id, *, base=None, timeout=230):
         "provider": provider,
         "decisionMode": provider,
         "decisionPolicyDetails": (
-            "recorded-skill-stop-on-drift"
+            "recorded-skill-jev-rest-of-trial-deepseek-after-refresh"
+            if provider == "skill-auto"
+            else "recorded-skill-stop-on-drift"
             if provider == "skill"
             else "jev-first-deepseek-once"
             if budgets
@@ -150,7 +198,7 @@ def launch(provider, trial_id, *, base=None, timeout=230):
     if budgets is not None:
         metadata["decisionTimeoutsSeconds"] = dict(zip(("jev", "deepseek"), budgets))
     started = time.perf_counter()
-    process, exit_code = None, None
+    process, exit_code, completed = None, None, False
     try:
         with (
             os.fdopen(os.open(stdout, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as out,
@@ -168,24 +216,29 @@ def launch(provider, trial_id, *, base=None, timeout=230):
             )
             try:
                 exit_code = process.wait(timeout=timeout)
+                completed = True
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGTERM)
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=5)
                 exit_code = 124
+    except LaunchTerminated:
+        exit_code = 143
+        raise
+    except KeyboardInterrupt:
+        exit_code = 130
+        raise
     finally:
-        metadata.update(
-            cliWallMs=(time.perf_counter() - started) * 1000,
-            exitCode=exit_code,
-            pid=process.pid if process is not None else None,
-        )
-        private_json(metadata_path, metadata)
-        for path in [stdout, stderr, session]:
-            if path.exists():
-                path.chmod(0o600)
+        try:
+            if process is not None and not completed:
+                stop_owned_group(process)
+        finally:
+            metadata.update(
+                cliWallMs=(time.perf_counter() - started) * 1000,
+                exitCode=exit_code,
+                pid=process.pid if process is not None else None,
+            )
+            private_json(metadata_path, metadata)
+            for path in [stdout, stderr, session]:
+                if path.exists():
+                    path.chmod(0o600)
     result_path = base / trial_id / "result.json"
     if result_path.exists():
         result = json.loads(result_path.read_text())
@@ -205,10 +258,23 @@ def launch(provider, trial_id, *, base=None, timeout=230):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("provider", choices=["jev", "deepseek", "jev-auto", "skill"])
+    parser.add_argument("provider", choices=["jev", "deepseek", "jev-auto", "skill", "skill-auto"])
     parser.add_argument("trial_id")
     args = parser.parse_args(argv)
-    result = launch(args.provider, args.trial_id)
+    previous_handler = signal.getsignal(signal.SIGTERM)
+
+    def terminate(_number, _frame):
+        # A repeated TERM must not interrupt cleanup of the owned PI group.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        raise LaunchTerminated()
+
+    signal.signal(signal.SIGTERM, terminate)
+    try:
+        result = launch(args.provider, args.trial_id)
+    except LaunchTerminated:
+        return 143
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
     print(json.dumps(result, ensure_ascii=False), flush=True)
     return 0 if result.get("exitCode") == 0 and result.get("status") == "success" else 1
 

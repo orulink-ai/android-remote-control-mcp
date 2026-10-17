@@ -13,13 +13,15 @@ from contextlib import aclosing
 import json
 import os
 from pathlib import Path
+import re
 import sys
+import time
 
 from config import decision_timeouts, load_openrouter_key, output_dir
 from controller import PhoneRuntime, private_write
 from decision_policy import DecisionPolicy, DecisionPolicyError
 from own_mcp import McpError
-from providers import DecisionClient, ProviderError
+from providers import DecisionClient, ProviderError, safe_http_status
 from worker_io import cancellation_scope, protocol_lines
 
 
@@ -38,21 +40,35 @@ class LocalRecipeClient:
 
 def safe_error(error, command):
     """No response bodies or arbitrary exception messages cross the IPC boundary."""
+    from terminal_runtime import TerminalRuntimeError
+
+    if isinstance(error, TerminalRuntimeError):
+        return TerminalRuntimeError.MESSAGES[error.code], {
+            "exceptionType": "TerminalRuntimeError", "stage": "terminal_observation", "code": error.code,
+        }
     if isinstance(error, ProviderError):
-        return "Model request failed; no action selected", {
+        details = {
             "exceptionType": error.exception_type,
             "stage": error.stage,
         }
+        status = safe_http_status(getattr(error, "httpStatus", None))
+        if status is not None:
+            details["httpStatus"] = status
+        return "Model request failed; no action selected", details
     if isinstance(error, McpError):
         return "MCP request failed; execution stopped", {
             "exceptionType": error.exception_type,
             "stage": error.stage,
         }
     if isinstance(error, DecisionPolicyError):
-        return "Phone decision policy stopped", {
+        details = {
             "exceptionType": "DecisionPolicyError",
             "stage": "decision_policy",
         }
+        status = safe_http_status(getattr(error, "httpStatus", None))
+        if status is not None:
+            details["httpStatus"] = status
+        return "Phone decision policy stopped", details
     return "Phone worker command failed", {"exceptionType": "InternalError", "stage": command}
 
 
@@ -109,11 +125,26 @@ async def serve(
     base=None,
 ):
     """Run the actual protocol; injectable dependencies keep tests device-free."""
-    if provider not in {"jev", "deepseek", "jev-auto", "skill"}:
+    serve_started = time.perf_counter()
+    terminal_task = None
+    if provider == "terminal-auto" or os.environ.get("PHONE_TERMINAL_TASK"):
+        from terminal_runtime import parse_terminal_task
+
+        supplied = os.environ.get("PHONE_TERMINAL_TASK")
+        if supplied:
+            terminal_task = parse_terminal_task(supplied)
+        else:
+            from terminal_tasks import resolve_task
+
+            terminal_task = parse_terminal_task(resolve_task(
+                os.environ.get("PHONE_TERMINAL_GOAL"), os.environ.get("PHONE_BENCH_RECIPE"),
+            ))
+        provider = "skill-auto" if terminal_task["kind"] == "recorded" else "jev-auto"
+    if provider not in {"jev", "deepseek", "jev-auto", "skill", "skill-auto"}:
         raise ValueError("Unsupported phone decision mode")
-    budgets = decision_timeouts() if provider == "jev-auto" else (5.0, 15.0)
+    budgets = decision_timeouts() if provider in {"jev-auto", "skill-auto"} else (5.0, 15.0)
     recipe = None
-    if provider == "skill":
+    if provider in {"skill", "skill-auto"}:
         from workflow import SkillPolicy, load_recipe
 
         recipe_path = os.environ.get("PHONE_BENCH_RECIPE", "")
@@ -121,7 +152,16 @@ async def serve(
             raise ValueError("PHONE_BENCH_RECIPE is required for skill mode")
         recipe = load_recipe(Path(recipe_path).expanduser())
     if runtime_factory is None:
-        if os.environ.get("PHONE_BENCH_RECORDING") == "1":
+        if terminal_task is not None:
+            from terminal_runtime import GenericTerminalRuntime, TerminalRecordedRuntime
+
+            def terminal_factory(trial):
+                if terminal_task["kind"] == "recorded":
+                    return TerminalRecordedRuntime(trial, terminal_task)
+                return GenericTerminalRuntime(trial, terminal_task, base=base)
+
+            runtime_factory = terminal_factory
+        elif os.environ.get("PHONE_BENCH_RECORDING") == "1":
             from workflow import RecordingPhoneRuntime
 
             runtime_factory = RecordingPhoneRuntime
@@ -130,32 +170,61 @@ async def serve(
     base = Path(base) if base is not None else output_dir()
     input_stream = sys.stdin if input_stream is None else input_stream
     output_stream = sys.stdout if output_stream is None else output_stream
-    client = (
-        LocalRecipeClient()
-        if provider == "skill"
-        else client_factory(
-            key_reader(),
-            mode=os.environ.get("PHONE_BENCH_MODE", "warm"),
-            compact=True,
-            decisionStyle="heads",
-        )
-    )
+    client_options = {
+        "mode": os.environ.get("PHONE_BENCH_MODE", "warm"),
+        "compact": True, "decisionStyle": "heads",
+    }
+    if terminal_task is not None:
+        client_options["providerFallbacks"] = True
+    if provider == "skill":
+        client = LocalRecipeClient()
+    elif provider == "skill-auto" or terminal_task is not None:
+        from skill_auto import LazyDecisionClient
+        client = LazyDecisionClient(client_factory, key_reader, **client_options)
+    else:
+        client = client_factory(key_reader(), **client_options)
     policy_options = {"primary_timeout": budgets[0], "fallback_timeout": budgets[1]}
     if provider == "skill":
         policy = SkillPolicy(client, provider, recipe=recipe, **policy_options)
+    elif provider == "skill-auto":
+        from skill_auto import SkillAutoPolicy
+        policy = SkillAutoPolicy(client, provider, recipe=recipe, **policy_options)
     else:
         policy = DecisionPolicy(client, provider, **policy_options)
     runtime, error_details = None, None
+    early_failure_written = False
     finished = failed = False
     approved_choice = approved_observation = None
 
     def finish(pi_elapsed_ms=None, *, disconnected=False):
+        nonlocal early_failure_written
         if runtime is None:
+            if terminal_task is not None and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", trial_id):
+                result = {
+                    "trialId": trial_id, "status": "failed", "provider": provider,
+                    "elapsedMs": (time.perf_counter() - serve_started) * 1000,
+                    "piElapsedMs": pi_elapsed_ms, "piAgentLoop": True,
+                    "modelCalls": [], "operations": [], "phases": [], "milestones": [],
+                    "finalState": None, "error": "手机 MCP 初始化或任务准备失败；未开始手机操作。",
+                    "errorDetails": error_details, "decisionPolicy": policy.summary(),
+                    "terminalTask": terminal_task,
+                    "terminalSummary": {"kind": terminal_task["kind"], "backend": provider},
+                }
+                directory = base / trial_id
+                directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+                path = directory / "result.json"
+                if early_failure_written or not path.exists():
+                    private_write(path, json.dumps(result, ensure_ascii=False, indent=2))
+                    early_failure_written = True
+                return result
             raise RuntimeError("No phone observation to finalize")
         if disconnected:
             runtime.error = runtime.error or "PI disconnected before finish"
-        if provider == "skill" and not failed and not disconnected:
-            policy.verify_complete(runtime.snapshot)
+        if provider in {"skill", "skill-auto"} and not failed and not disconnected:
+            if provider == "skill-auto":
+                policy.verify_complete(runtime.snapshot, progress=runtime.progress)
+            else:
+                policy.verify_complete(runtime.snapshot)
         extra = {
             "provider": provider,
             "piElapsedMs": pi_elapsed_ms,
@@ -165,8 +234,11 @@ async def serve(
             "decisionPolicy": policy.summary(),
             "errorDetails": error_details,
         }
-        if provider == "skill":
+        if provider in {"skill", "skill-auto"}:
             extra["recipeExecution"] = policy.summary()
+        if terminal_task is not None:
+            extra["terminalTask"] = terminal_task
+            extra["terminalSummary"] = {"kind": terminal_task["kind"], "backend": provider}
         # Even a successful readback cannot turn a failed PI tool into a success.
         if failed or disconnected:
             extra["status"] = "failed"
@@ -220,7 +292,7 @@ async def serve(
                         except Exception:
                             reconcile_action(runtime)
                             raise
-                        if provider == "skill":
+                        if provider in {"skill", "skill-auto"}:
                             # The final action can make PI stop without another
                             # decide request; verify every readback immediately.
                             delivery = value.get("execution", {"status": "applied"})
@@ -229,6 +301,8 @@ async def serve(
                                 "not_dispatched",
                             }:
                                 raise DecisionPolicyError("Phone action delivery is uncertain")
+                            if delivery["status"] == "applied" and set(delivery) != {"status"}:
+                                raise DecisionPolicyError("Phone action delivery evidence is ambiguous")
                             if delivery["status"] == "not_dispatched":
                                 # This releases only the pending reference. PI
                                 # must choose and dispatch again on the returned
@@ -258,6 +332,10 @@ async def serve(
                     message, error_details = safe_error(error, command)
                     if runtime is not None:
                         runtime.error = message
+                    elif terminal_task is not None:
+                        # Initialization failures must survive an immediate PI
+                        # disconnect, rather than depending on a later finish.
+                        finish()
                     response = {
                         "id": request.get("id") if isinstance(request, dict) else None,
                         "error": message,
@@ -268,7 +346,7 @@ async def serve(
                     break
     finally:
         try:
-            if runtime is not None and not finished:
+            if (runtime is not None or (terminal_task is not None and failed)) and not finished:
                 finish(disconnected=True)
         finally:
             await client.close()
@@ -277,7 +355,7 @@ async def serve(
 async def main(argv=None, **serve_kwargs):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--provider", choices=["jev", "deepseek", "jev-auto", "skill"], required=True
+        "--provider", choices=["jev", "deepseek", "jev-auto", "skill", "skill-auto", "terminal-auto"], required=True
     )
     parser.add_argument("--trial-id", required=True)
     args = parser.parse_args(argv)

@@ -262,7 +262,7 @@ def run_trial(model, trial_id, output_directory, timeout=260, *, serial=None):
 
 
 def record_trial(model, trial_id, *, report_dir, serial=None, ffprobe="ffprobe"):
-    if model not in {"jev", "deepseek", "jev-auto", "skill"} or not re.fullmatch(
+    if model not in {"jev", "deepseek", "jev-auto", "skill", "skill-auto"} or not re.fullmatch(
         r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", trial_id
     ):
         raise ValueError("Invalid model or trial ID")
@@ -365,7 +365,7 @@ def record_trial(model, trial_id, *, report_dir, serial=None, ffprobe="ffprobe")
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("model", choices=["jev", "deepseek", "jev-auto", "skill"])
+    parser.add_argument("model", choices=["jev", "deepseek", "jev-auto", "skill", "skill-auto"])
     parser.add_argument("trial_id")
     parser.add_argument("--report-dir", required=True)
     parser.add_argument("--serial", default=os.environ.get("PHONE_BENCH_DEVICE"))
