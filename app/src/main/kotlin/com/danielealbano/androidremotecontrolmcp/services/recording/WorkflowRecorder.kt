@@ -2,6 +2,7 @@ package com.danielealbano.androidremotecontrolmcp.services.recording
 
 import android.content.Context
 import android.view.accessibility.AccessibilityEvent
+import com.danielealbano.androidremotecontrolmcp.services.accessibility.AccessibilityServiceProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,12 +12,13 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** App-local recording; no cloud upload, screenshots, coordinates, or persistent node handles. */
+/** App-local recording. Captured geometry is draft evidence, never a replay coordinate. */
 @Singleton
 class WorkflowRecorder
     @Inject
     constructor(
         @ApplicationContext context: Context,
+        private val accessibility: AccessibilityServiceProvider,
     ) {
         private val session = RecordingSession(context.packageName)
         private val files = RecordingFileStore(File(context.filesDir, "workflow-recordings"))
@@ -70,7 +72,16 @@ class WorkflowRecorder
         fun onAccessibilityEvent(event: AccessibilityEvent) {
             val current = state.value
             if (current.status != RecordingStatus.RECORDING || event.packageName?.toString() != current.targetPackage) return
-            runCatching { AccessibilityRecordingAdapter.extract(event)?.let(session::record) }
-                .onFailure { session.captureFailed() }
+            runCatching {
+                val screen =
+                    if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
+                        current.targetPackage == XhsSemanticCandidateAdapter.TARGET_PACKAGE
+                    ) {
+                        accessibility.getScreenInfo()
+                    } else {
+                        null
+                    }
+                AccessibilityRecordingAdapter.extract(event, screen?.width, screen?.height)?.let(session::record)
+            }.onFailure { session.captureFailed() }
         }
     }

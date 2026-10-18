@@ -48,6 +48,16 @@ def resolve_task(goal, recipe_path=None):
     original = goal.strip()
     text = re.sub(r"\s+", "", original)
     task = {"goal": original}
+    if "录制" in text and _authorized_recorded_task(text):
+        return {**task, "kind": "recorded"}
+    from experience_tasks import parse_experience_task
+
+    try:
+        experience = parse_experience_task(original)
+    except ValueError:
+        raise TerminalTaskError("Phone goal is ambiguous or outside supported actions") from None
+    if experience is not None:
+        return experience
     if _authorized_recorded_task(text):
         return {**task, "kind": "recorded"}
     if re.search(r"录制|完整闭环", text) or all(

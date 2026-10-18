@@ -5,7 +5,11 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 /** Translate the small set of actionable events synchronously; never retain a source node. */
 object AccessibilityRecordingAdapter {
-    fun extract(event: AccessibilityEvent): RecordingInput? {
+    fun extract(
+        event: AccessibilityEvent,
+        screenWidth: Int? = null,
+        screenHeight: Int? = null,
+    ): RecordingInput? {
         val type =
             when (event.eventType) {
                 AccessibilityEvent.TYPE_VIEW_CLICKED -> "click"
@@ -20,6 +24,28 @@ object AccessibilityRecordingAdapter {
             if (hasPasswordAncestor(source)) return null
             val packageName = source.packageName?.toString() ?: return null
             if (packageName != event.packageName?.toString()) return null
+            val snapshot =
+                if (type == "click" && packageName == XhsSemanticCandidateAdapter.TARGET_PACKAGE &&
+                    screenWidth != null && screenHeight != null
+                ) {
+                    RecordingContextCapture.capture(source, screenWidth, screenHeight)
+                } else {
+                    null
+                }
+            val candidate = snapshot?.let(XhsSemanticCandidateAdapter::identify)
+            val evidence =
+                candidate?.evidence ?: snapshot
+                    ?.takeIf {
+                        it.source.bounds.inside(it.screenWidth, it.screenHeight)
+                    }?.let {
+                        RecordedEventEvidence(
+                            source = "unresolved-source",
+                            sourceBounds = it.source.bounds,
+                            screenWidth = it.screenWidth,
+                            screenHeight = it.screenHeight,
+                            sourceLabels = it.source.labels,
+                        )
+                    }
             RecordingInput(
                 type = type,
                 selector =
@@ -28,11 +54,14 @@ object AccessibilityRecordingAdapter {
                         className = source.className?.toString(),
                         resourceId = source.viewIdResourceName,
                         text = if (type == "text") null else source.text?.toString(),
-                        contentDescription = source.contentDescription?.toString(),
+                        contentDescription = if (type == "text") null else source.contentDescription?.toString(),
+                        semanticRole = candidate?.role,
+                        contextTitle = candidate?.contextTitle,
                     ),
                 value = if (type == "text") source.text?.toString() else null,
                 scrollFromIndex = event.fromIndex.takeIf { type == "scroll" && it >= 0 },
                 scrollToIndex = event.toIndex.takeIf { type == "scroll" && it >= 0 },
+                evidence = evidence,
             )
         } finally {
             @Suppress("DEPRECATION")

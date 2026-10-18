@@ -50,8 +50,10 @@ import com.danielealbano.androidremotecontrolmcp.services.recording.RecordedWork
 import com.danielealbano.androidremotecontrolmcp.services.recording.RecordingIssue
 import com.danielealbano.androidremotecontrolmcp.services.recording.RecordingStatus
 import com.danielealbano.androidremotecontrolmcp.services.recording.RecordingUiState
+import com.danielealbano.androidremotecontrolmcp.ui.components.WorkflowExecutionCard
 import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.RecordingUiError
 import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.RecordingViewModel
+import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.WorkflowExecutionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,9 +64,11 @@ fun RecordingScreen(
     onBack: () -> Unit,
     onOpenPermissions: () -> Unit,
     viewModel: RecordingViewModel = hiltViewModel(),
+    executionViewModel: WorkflowExecutionViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val uiError by viewModel.error.collectAsStateWithLifecycle()
+    val executionState by executionViewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var name by rememberSaveable { mutableStateOf("") }
@@ -150,7 +154,12 @@ fun RecordingScreen(
                 RecordingStatus.REVIEW -> {
                     Text(state.name, style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(R.string.recording_review_body), style = MaterialTheme.typography.bodyMedium)
-                    Button(
+                    WorkflowExecutionCard(
+                        state = executionState,
+                        onSubmit = executionViewModel::submitCurrent,
+                        onCancelQueued = executionViewModel::cancelQueued,
+                    )
+                    OutlinedButton(
                         enabled = state.canExport,
                         onClick = {
                             pendingExport = viewModel.exportJson()
@@ -162,7 +171,11 @@ fun RecordingScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(R.string.recording_export)) }
-                    OutlinedButton(onClick = { showDiscard = true }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { showDiscard = true },
+                        enabled = !executionState.submitting && executionState.job?.status?.isActive != true,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Text(stringResource(R.string.recording_new))
                     }
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
@@ -264,7 +277,17 @@ private fun RecordedSteps(events: List<RecordedWorkflowEvent>) {
             val target =
                 listOf(event.selector.contentDescription, event.selector.text, event.selector.resourceId)
                     .firstOrNull { !it.isNullOrBlank() }
-            Text(target ?: stringResource(R.string.recording_unlabelled_target), style = MaterialTheme.typography.bodyMedium)
+            val candidateLabel =
+                when (event.selector.semanticRole) {
+                    "like_toggle" -> R.string.recording_candidate_like
+                    "collect_toggle" -> R.string.recording_candidate_collect
+                    "open_target" -> R.string.recording_candidate_post
+                    else -> null
+                }
+            Text(
+                candidateLabel?.let { stringResource(it) } ?: target ?: stringResource(R.string.recording_unlabelled_target),
+                style = MaterialTheme.typography.bodyMedium,
+            )
             if (!event.value.isNullOrBlank()) {
                 Text(event.value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

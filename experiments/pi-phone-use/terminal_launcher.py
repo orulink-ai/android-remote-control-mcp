@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import sys
 
-from terminal_tasks import QUERY, TITLE
 from workflow import load_recipe
 
 DIRECTORY = Path(__file__).resolve().parent
@@ -32,10 +31,13 @@ def build_launch(profile, arguments, environment):
         raise ValueError(
             "The phone entry fixes its provider and tools; use ordinary pi for other configurations"
         )
-    recipe = Path(profile["recipe"]).expanduser().resolve()
-    checked = load_recipe(recipe)
-    if checked["task"] != {"query": QUERY, "expectedFirstTitle": TITLE}:
-        raise ValueError("Recorded skill does not match this terminal adapter")
+    recipe = None
+    if profile.get("recipe") is not None:
+        recipe = Path(profile["recipe"]).expanduser().resolve()
+        load_recipe(recipe)
+    enabled = profile.get("experienceEnabled", True)
+    if type(enabled) is not bool:
+        raise ValueError("experienceEnabled must be boolean")
     mcp_file = Path(profile["mcpConfig"]).expanduser().resolve()
     server = profile["mcpServer"]
     configured = json.loads(mcp_file.read_text())["mcpServers"][server]
@@ -48,7 +50,8 @@ def build_launch(profile, arguments, environment):
     env = {
         **environment,
         "PHONE_BENCH_PYTHON": python,
-        "PHONE_BENCH_RECIPE": str(recipe),
+        "PHONE_BENCH_RECIPE": str(recipe) if recipe is not None else "",
+        "PHONE_EXPERIENCE_ENABLED": "1" if enabled else "0",
         "PHONE_BENCH_OUTPUT_DIR": str(
             Path(profile.get("output", "~/.local/share/orulink-phone/terminal"))
             .expanduser()

@@ -86,8 +86,23 @@ class RecordingSession(
         val current = state.value
         if (current.status != RecordingStatus.RECORDING || input.isPassword) return
         if (input.selector.packageName != current.targetPackage || input.type !in TYPES) return
-        val selector = input.selector.sanitized()
-        if (listOf(selector.resourceId, selector.text, selector.contentDescription).all { it.isNullOrBlank() }) return
+        val evidence = input.evidence?.takeIf { it.isBounded() }
+        val selector =
+            input.selector.sanitized().let {
+                if (evidence?.supportsCandidate(it.semanticRole, it.contextTitle) !=
+                    true
+                ) {
+                    it.copy(semanticRole = null, contextTitle = null)
+                } else {
+                    it
+                }
+            }
+        val hasObservedText = input.type == "text" && !input.value.isNullOrBlank()
+        if (evidence == null && !hasObservedText &&
+            listOf(selector.resourceId, selector.text, selector.contentDescription).all { it.isNullOrBlank() }
+        ) {
+            return
+        }
         val event =
             RecordedWorkflowEvent(
                 sequence = current.events.size + 1,
@@ -97,6 +112,7 @@ class RecordingSession(
                 value = input.value?.take(MAX_TEXT),
                 scrollFromIndex = input.scrollFromIndex,
                 scrollToIndex = input.scrollToIndex,
+                evidence = evidence,
             )
         val previous = current.events.lastOrNull()
         val coalesce = input.type == "text" && previous?.type == "text" && previous.selector == selector
@@ -194,6 +210,8 @@ class RecordingSession(
             resourceId = resourceId?.take(MAX_TEXT),
             text = text?.take(MAX_TEXT),
             contentDescription = contentDescription?.take(MAX_TEXT),
+            semanticRole = semanticRole?.takeIf { it in setOf("like_toggle", "collect_toggle", "open_target") },
+            contextTitle = contextTitle?.takeIf { it == XhsSemanticCandidateAdapter.TARGET_TITLE },
         )
 
     companion object {

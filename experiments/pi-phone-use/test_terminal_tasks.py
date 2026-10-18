@@ -89,4 +89,11 @@ def test_recorded_mutations_require_positive_exact_authorization(prompt):
     ],
 )
 def test_explicit_recorded_requests_preserve_the_verified_target_scope(prompt):
-    assert resolve_task(prompt)["kind"] == "recorded"
+    task = resolve_task(prompt)
+    if "录制" in prompt:
+        assert task["kind"] == "recorded"
+    else:
+        assert task["kind"] == "experience"
+        assert task["query"] == "小狮日记"
+        assert task["desired"] == {"liked": True, "collected": True}
+        assert task["restoreAfter"] is True

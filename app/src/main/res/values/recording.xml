@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="recording_home_title">Teach a workflow</string>
-    <string name="recording_home_body">Demonstrate in Xiaohongshu, review the captured steps, then export a draft for PI.</string>
+    <string name="recording_home_body">Demonstrate in Xiaohongshu, review the steps, then let PI on your computer validate, generate and run the skill.</string>
     <string name="recording_home_action">Record or review latest draft</string>
     <string name="recording_title">Record a workflow</string>
     <string name="recording_back">Back to server</string>
     <string name="recording_intro_title">Show it once</string>
-    <string name="recording_intro_body">1. Demonstrate · 2. Review steps · 3. Export for PI</string>
+    <string name="recording_intro_body">1. Demonstrate · 2. Review steps · 3. Reuse with PI</string>
     <string name="recording_name_label">Workflow name</string>
     <string name="recording_default_name">Search, like and save in Xiaohongshu</string>
     <string name="recording_scope">Target: Xiaohongshu. Only this app’s supported accessibility actions are captured, including entered text. Video is not recorded in this version. Avoid entering private information during the demonstration.</string>
@@ -24,9 +24,9 @@
     <string name="recording_discard_title">Leave the current draft?</string>
     <string name="recording_discard_body">An unfinished recording will be discarded. Finished recordings already saved on this device will be kept.</string>
     <string name="recording_keep">Keep editing</string>
-    <string name="recording_review_body">These are captured actions, not a verified skill. Check the sequence and target labels. Export the JSON draft to your computer to generate and validate a PI skill. Recent saved drafts are restored when this app starts.</string>
+    <string name="recording_review_body">These are draft action candidates, not verified outcomes. Confirm the fixed task before submitting to your computer.</string>
     <string name="recording_parameter_title">Decide what should vary</string>
-    <string name="recording_parameter_body">When generating the skill, confirm whether the search text is a parameter and whether “first post” means the first result each time or this specific post. Like and save should express the intended state, not blindly repeat a tap.</string>
+    <string name="recording_parameter_body">This version only reuses “小狮日记” and the same demonstrated post. Other search terms, posts and apps are not executed automatically. Like and save use verified target states instead of blindly repeated taps.</string>
     <string name="recording_export">Export recording JSON</string>
     <string name="recording_exported">Recording exported. Review and validate it on your computer before reuse.</string>
     <string name="recording_export_failed">Could not export. The recording on this device has been kept.</string>
@@ -50,4 +50,7 @@
     <string name="recording_issue_disconnected">The accessibility service disconnected and recording paused. Enable the service again to continue.</string>
     <string name="recording_issue_save">Could not save inside the app. You can still export this draft.</string>
     <string name="recording_issue_capture">Could not capture an action. Recording paused; review the steps before continuing.</string>
+    <string name="recording_candidate_like">Like toggle candidate · needs PI verification</string>
+    <string name="recording_candidate_collect">Save toggle candidate · needs PI verification</string>
+    <string name="recording_candidate_post">Demonstrated post candidate · needs PI verification</string>
 </resources>

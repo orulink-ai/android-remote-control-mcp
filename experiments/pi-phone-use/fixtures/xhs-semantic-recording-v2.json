@@ -1,0 +1,371 @@
+{
+  "id": "recording-001",
+  "name": "固定任务录制候选",
+  "targetPackage": "com.xingin.xhs",
+  "startedAtEpochMs": 0,
+  "endedAtEpochMs": 13000,
+  "events": [
+    {
+      "sequence": 1,
+      "elapsedMs": 0,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.Button",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": null,
+        "contentDescription": "搜索",
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": {
+        "source": "unresolved-source",
+        "sourceBounds": {
+          "left": 1276,
+          "top": 145,
+          "right": 1416,
+          "bottom": 285
+        },
+        "screenWidth": 1440,
+        "screenHeight": 3200,
+        "favoriteAnchorBounds": null,
+        "sourceLabels": [],
+        "favoriteAnchorLabels": [],
+        "contextAuthor": null
+      }
+    },
+    {
+      "sequence": 2,
+      "elapsedMs": 1000,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.EditText",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": "搜索, ",
+        "contentDescription": null,
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": null
+    },
+    {
+      "sequence": 3,
+      "elapsedMs": 2000,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.EditText",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": "搜索, 小狮日记",
+        "contentDescription": null,
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": null
+    },
+    {
+      "sequence": 4,
+      "elapsedMs": 3000,
+      "type": "text",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.EditText",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": "搜索, 小狮日记",
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": null
+    },
+    {
+      "sequence": 5,
+      "elapsedMs": 4000,
+      "type": "scroll",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "androidx.recyclerview.widget.RecyclerView",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": null
+    },
+    {
+      "sequence": 6,
+      "elapsedMs": 5000,
+      "type": "scroll",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "androidx.recyclerview.widget.RecyclerView",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": null,
+      "scrollFromIndex": 0,
+      "scrollToIndex": 6,
+      "evidence": null
+    },
+    {
+      "sequence": 7,
+      "elapsedMs": 6000,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.view.ViewGroup",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": "open_target",
+        "contextTitle": "当我闯进一个限时48小时的创造营"
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": {
+        "source": "source-descendants-v1",
+        "sourceBounds": {
+          "left": 55,
+          "top": 1503,
+          "right": 486,
+          "bottom": 1670
+        },
+        "screenWidth": 1440,
+        "screenHeight": 3200,
+        "favoriteAnchorBounds": null,
+        "sourceLabels": [
+          "当我闯进一个限时48小时的创造营"
+        ],
+        "favoriteAnchorLabels": [],
+        "contextAuthor": null
+      }
+    },
+    {
+      "sequence": 8,
+      "elapsedMs": 7000,
+      "type": "scroll",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "androidx.recyclerview.widget.RecyclerView",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": null
+    },
+    {
+      "sequence": 9,
+      "elapsedMs": 8000,
+      "type": "scroll",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "androidx.recyclerview.widget.RecyclerView",
+        "resourceId": "com.xingin.xhs:id/0_resource_name_obfuscated",
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": null,
+        "contextTitle": null
+      },
+      "value": null,
+      "scrollFromIndex": 0,
+      "scrollToIndex": 0,
+      "evidence": null
+    },
+    {
+      "sequence": 10,
+      "elapsedMs": 9000,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.LinearLayout",
+        "resourceId": null,
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": "like_toggle",
+        "contextTitle": "当我闯进一个限时48小时的创造营"
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": {
+        "source": "xhs-toolbar-candidate",
+        "sourceBounds": {
+          "left": 699,
+          "top": 2990,
+          "right": 956,
+          "bottom": 3144
+        },
+        "screenWidth": 1440,
+        "screenHeight": 3200,
+        "favoriteAnchorBounds": {
+          "left": 956,
+          "top": 2990,
+          "right": 1218,
+          "bottom": 3144
+        },
+        "sourceLabels": [
+          "1"
+        ],
+        "favoriteAnchorLabels": [
+          "收藏2"
+        ],
+        "contextAuthor": "小狮日记"
+      }
+    },
+    {
+      "sequence": 11,
+      "elapsedMs": 10000,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.Button",
+        "resourceId": null,
+        "text": null,
+        "contentDescription": "已收藏3",
+        "semanticRole": "collect_toggle",
+        "contextTitle": "当我闯进一个限时48小时的创造营"
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": {
+        "source": "xhs-toolbar-candidate",
+        "sourceBounds": {
+          "left": 956,
+          "top": 2990,
+          "right": 1218,
+          "bottom": 3144
+        },
+        "screenWidth": 1440,
+        "screenHeight": 3200,
+        "favoriteAnchorBounds": {
+          "left": 956,
+          "top": 2990,
+          "right": 1218,
+          "bottom": 3144
+        },
+        "sourceLabels": [
+          "已收藏3",
+          "1"
+        ],
+        "favoriteAnchorLabels": [
+          "已收藏3"
+        ],
+        "contextAuthor": "小狮日记"
+      }
+    },
+    {
+      "sequence": 12,
+      "elapsedMs": 11000,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.LinearLayout",
+        "resourceId": null,
+        "text": null,
+        "contentDescription": null,
+        "semanticRole": "like_toggle",
+        "contextTitle": "当我闯进一个限时48小时的创造营"
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": {
+        "source": "xhs-toolbar-candidate",
+        "sourceBounds": {
+          "left": 699,
+          "top": 2990,
+          "right": 956,
+          "bottom": 3144
+        },
+        "screenWidth": 1440,
+        "screenHeight": 3200,
+        "favoriteAnchorBounds": {
+          "left": 956,
+          "top": 2990,
+          "right": 1218,
+          "bottom": 3144
+        },
+        "sourceLabels": [
+          "1"
+        ],
+        "favoriteAnchorLabels": [
+          "已收藏3"
+        ],
+        "contextAuthor": "小狮日记"
+      }
+    },
+    {
+      "sequence": 13,
+      "elapsedMs": 12000,
+      "type": "click",
+      "selector": {
+        "packageName": "com.xingin.xhs",
+        "className": "android.widget.Button",
+        "resourceId": null,
+        "text": null,
+        "contentDescription": "收藏2",
+        "semanticRole": "collect_toggle",
+        "contextTitle": "当我闯进一个限时48小时的创造营"
+      },
+      "value": null,
+      "scrollFromIndex": null,
+      "scrollToIndex": null,
+      "evidence": {
+        "source": "xhs-toolbar-candidate",
+        "sourceBounds": {
+          "left": 956,
+          "top": 2990,
+          "right": 1218,
+          "bottom": 3144
+        },
+        "screenWidth": 1440,
+        "screenHeight": 3200,
+        "favoriteAnchorBounds": {
+          "left": 956,
+          "top": 2990,
+          "right": 1218,
+          "bottom": 3144
+        },
+        "sourceLabels": [
+          "收藏2",
+          "1"
+        ],
+        "favoriteAnchorLabels": [
+          "收藏2"
+        ],
+        "contextAuthor": "小狮日记"
+      }
+    }
+  ],
+  "schemaVersion": 1,
+  "source": "android-accessibility-events",
+  "needsReview": true,
+  "hasPairedVerification": false
+}

@@ -42,6 +42,7 @@ import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerSystemActionT
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerTextInputTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerTouchActionTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerUtilityTools
+import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerWorkflowTools
 import com.danielealbano.androidremotecontrolmcp.privacy.PlaceholderSubstitutor
 import com.danielealbano.androidremotecontrolmcp.privacy.PrivacyModeManager
 import com.danielealbano.androidremotecontrolmcp.privacy.PrivacyModeStatus
@@ -74,6 +75,7 @@ import com.danielealbano.androidremotecontrolmcp.services.sharing.SharedContentI
 import com.danielealbano.androidremotecontrolmcp.services.storage.FileOperationProvider
 import com.danielealbano.androidremotecontrolmcp.services.storage.StorageLocationProvider
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.TunnelManager
+import com.danielealbano.androidremotecontrolmcp.services.workflow.WorkflowJobCoordinator
 import com.danielealbano.androidremotecontrolmcp.ui.MainActivity
 import com.danielealbano.androidremotecontrolmcp.utils.NetworkUtils
 import com.danielealbano.androidremotecontrolmcp.utils.PermissionUtils
@@ -117,6 +119,8 @@ class McpServerService : Service() {
     @Inject lateinit var actionExecutor: ActionExecutor
 
     @Inject lateinit var controlSession: ControlSession
+
+    @Inject lateinit var workflowJobCoordinator: WorkflowJobCoordinator
 
     @Inject lateinit var accessibilityServiceProvider: AccessibilityServiceProvider
 
@@ -471,6 +475,7 @@ class McpServerService : Service() {
         )
         registerLocationTools(registrar, locationProvider, privacyToolGate, toolNamePrefix, perms)
         registerSharingBundle(registrar, toolNamePrefix, perms, fileSizeLimitMb)
+        registerWorkflowTools(registrar, workflowJobCoordinator, toolNamePrefix, perms)
     }
 
     private fun registerAccessibilityToolBundle(

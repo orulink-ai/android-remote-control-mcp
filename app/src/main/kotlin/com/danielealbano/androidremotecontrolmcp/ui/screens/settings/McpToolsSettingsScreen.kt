@@ -53,11 +53,14 @@ private data class ToolEntry(
     val toolName: String,
     val displayName: String,
     val params: List<ParamEntry> = emptyList(),
+    val displayNameRes: Int? = null,
+    val descriptionRes: Int? = null,
 )
 
 private data class ToolCategory(
     val header: String,
     val tools: List<ToolEntry>,
+    val headerRes: Int? = null,
 )
 
 private val ALL_TOOL_CATEGORIES: List<ToolCategory> =
@@ -195,6 +198,30 @@ private val ALL_TOOL_CATEGORIES: List<ToolCategory> =
             ),
         ),
         ToolCategory(
+            "Workflow Replay",
+            listOf(
+                ToolEntry(
+                    "workflow_claim",
+                    "Claim Workflow",
+                    displayNameRes = R.string.workflow_tool_claim,
+                    descriptionRes = R.string.workflow_tool_claim_description,
+                ),
+                ToolEntry(
+                    "workflow_update",
+                    "Update Workflow",
+                    displayNameRes = R.string.workflow_tool_update,
+                    descriptionRes = R.string.workflow_tool_update_description,
+                ),
+                ToolEntry(
+                    "workflow_status",
+                    "Workflow Status",
+                    displayNameRes = R.string.workflow_tool_status,
+                    descriptionRes = R.string.workflow_tool_status_description,
+                ),
+            ),
+            headerRes = R.string.workflow_tools_category,
+        ),
+        ToolCategory(
             "Sharing",
             listOf(
                 ToolEntry("get_shared_content", "Get Shared Content"),
@@ -267,7 +294,7 @@ fun McpToolsSettingsScreen(
                     category.tools.mapNotNull { OptionalToolPermissions.permissionForTool(it.toolName) }.distinct()
                 item(key = "header_${category.header}") {
                     ToolCategoryHeader(
-                        header = category.header,
+                        header = category.headerRes?.let { stringResource(it) } ?: category.header,
                         missingPermission = categoryPermissions.any { !isGranted(it) },
                         onNavigateToPermissions = onNavigateToPermissions,
                     )
@@ -364,8 +391,13 @@ private fun ToolRow(
     onParamToggle: (String, String, Boolean) -> Unit,
 ) {
     val toolEnabled = perms.isToolEnabled(tool.toolName)
+    val description: (@Composable () -> Unit)? =
+        tool.descriptionRes?.let { resource ->
+            { Text(stringResource(resource)) }
+        }
     ListItem(
-        headlineContent = { Text(tool.displayName) },
+        headlineContent = { Text(tool.displayNameRes?.let { stringResource(it) } ?: tool.displayName) },
+        supportingContent = description,
         trailingContent = {
             Switch(
                 checked = toolEnabled,

@@ -301,6 +301,30 @@ def allowed_choice(choice, actions, phase, observation):
     return a
 
 
+def toggle_stage_candidates(actions, phase, observation):
+    """Expose only the unsatisfied current toggle with its counterpart verified.
+
+    A transient screenshot may satisfy one flag while the other is inconsistent.
+    Keep that observation and its milestone unchanged; PI can wait for a new read.
+    """
+    stages = {
+        "like": ("like", False, False),
+        "collect": ("collect", True, False),
+        "unlike": ("like", True, True),
+        "uncollect": ("collect", False, True),
+    }
+    if phase not in stages:
+        return actions
+    role, liked, collected = stages[phase]
+    ready = observation.get("liked") is liked and observation.get("collected") is collected
+    return {
+        key: action
+        for key, action in actions.items()
+        if action.get("role") in {"wait", "blocked"}
+        or (ready and action.get("role") == role)
+    }
+
+
 class PhoneRuntime:
     def __init__(self, trial_id):
         if not isinstance(trial_id, str) or not re.fullmatch(
@@ -487,6 +511,7 @@ class PhoneRuntime:
                     continue
                 prefix = "TYPE" if c["method"] == "type" else "CLICK"
                 actions[prefix + ":" + c["id"]] = c
+        actions = toggle_stage_candidates(actions, self.progress.phase, state)
         self.actions = actions
         self.snapshot = {
             "state": {

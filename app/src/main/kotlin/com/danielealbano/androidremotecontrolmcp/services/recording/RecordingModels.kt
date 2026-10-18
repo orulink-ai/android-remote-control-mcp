@@ -24,6 +24,8 @@ data class RecordedSelector(
     val resourceId: String? = null,
     val text: String? = null,
     val contentDescription: String? = null,
+    val semanticRole: String? = null,
+    val contextTitle: String? = null,
 )
 
 @Serializable
@@ -35,6 +37,7 @@ data class RecordedWorkflowEvent(
     val value: String? = null,
     val scrollFromIndex: Int? = null,
     val scrollToIndex: Int? = null,
+    val evidence: RecordedEventEvidence? = null,
 )
 
 enum class RecordingStatus { IDLE, RECORDING, PAUSED, REVIEW }
@@ -72,4 +75,62 @@ data class RecordingInput(
     val isPassword: Boolean = false,
     val scrollFromIndex: Int? = null,
     val scrollToIndex: Int? = null,
+    val evidence: RecordedEventEvidence? = null,
 )
+
+/** Capture geometry is evidence for a draft candidate, never a replay coordinate. */
+@Serializable
+data class RecordedBounds(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int,
+) {
+    fun inside(
+        width: Int,
+        height: Int,
+    ): Boolean = left >= 0 && top >= 0 && right > left && bottom > top && right <= width && bottom <= height
+}
+
+@Serializable
+data class RecordedEventEvidence(
+    val source: String,
+    val sourceBounds: RecordedBounds,
+    val screenWidth: Int,
+    val screenHeight: Int,
+    val favoriteAnchorBounds: RecordedBounds? = null,
+    val sourceLabels: List<String> = emptyList(),
+    val favoriteAnchorLabels: List<String> = emptyList(),
+    val contextAuthor: String? = null,
+) {
+    fun supportsCandidate(
+        role: String?,
+        title: String?,
+    ): Boolean =
+        title == XhsSemanticCandidateAdapter.TARGET_TITLE &&
+            when (role) {
+                "like_toggle", "collect_toggle" -> {
+                    source == "xhs-toolbar-candidate" &&
+                        favoriteAnchorBounds != null && favoriteAnchorLabels.isNotEmpty() &&
+                        favoriteAnchorLabels.all { it.startsWith("收藏") || it.startsWith("已收藏") } &&
+                        contextAuthor == XhsSemanticCandidateAdapter.TARGET_AUTHOR
+                }
+
+                "open_target" -> {
+                    source == "source-descendants-v1" && XhsSemanticCandidateAdapter.TARGET_TITLE in sourceLabels
+                }
+
+                else -> {
+                    false
+                }
+            }
+
+    fun isBounded(): Boolean =
+        source in setOf("xhs-toolbar-candidate", "source-descendants-v1", "unresolved-source") &&
+            screenWidth in 1..16_384 && screenHeight in 1..16_384 &&
+            sourceBounds.inside(screenWidth, screenHeight) &&
+            (favoriteAnchorBounds == null || favoriteAnchorBounds.inside(screenWidth, screenHeight)) &&
+            sourceLabels.size <= 8 && favoriteAnchorLabels.size <= 8 &&
+            (sourceLabels + favoriteAnchorLabels).all { it.length <= 64 && XhsSemanticCandidateAdapter.keepLabel(it) != null } &&
+            (contextAuthor == null || contextAuthor == XhsSemanticCandidateAdapter.TARGET_AUTHOR)
+}

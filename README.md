@@ -3,7 +3,7 @@
 [![CI](https://github.com/danielealbano/android-remote-control-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/danielealbano/android-remote-control-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **PI phone terminal:** The locally configured `pi-phone` entry selects `phone-control / auto` and uses this project's Android MCP over LAN. It reuses the fixed recorded workflow or asks Jev, with DeepSeek fallback after a fresh observation. Start with the [terminal guide and current validation status](docs/research/pi-phone-terminal.md). The [benchmark scripts](experiments/pi-phone-use/README.md) are a separate path; their ADB preparation and recording commands are not required by the daily terminal entry.
+> **PI phone terminal:** The locally configured `pi-phone` entry selects `phone-control / auto` and uses this project's Android MCP over LAN. Parameterized Xiaohongshu tasks use Jev at each step with optional recorded experience, with DeepSeek fallback after a fresh observation. See the [experience-assisted task guide and validation status](docs/research/phone-experience.md). `/phone-replay` retains the explicit fixed workflow. The [benchmark scripts](experiments/pi-phone-use/README.md) are a separate path; their ADB preparation and recording commands are not required by the daily terminal entry.
 
 An Android application that runs as an **MCP (Model Context Protocol) server**, enabling AI models to **fully control an Android device** remotely using accessibility services and screenshot capture.
 
@@ -81,10 +81,14 @@ See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the full tool reference with inpu
 - Headless setup via ADB (configure, grant permissions, start/stop server without UI)
 - Record Xiaohongshu accessibility events, pause, review and export a local workflow draft
 
-### PI Workflow Recording Preview
+### PI Workflow Recording
 
-The app's recording entry captures semantic accessibility events. Exported JSON remains a draft:
-paired before/after observations are required before it can become an executable recipe.
+The app's recording entry captures semantic accessibility events. After reviewing a recording,
+submit “Generate Skill and run with PI” to the persistent phone queue. The local companion
+verifies the recorded intents with PI, generates a paired recipe, replays it with PI, and
+publishes a successful bundle to the profile used by new `pi-phone` sessions.
+Exported JSON remains a draft: paired before/after observations are required before execution.
+See the [App-to-PI setup and acceptance status](docs/research/app-workflow-loop.md).
 The [PI phone workflow experiments](experiments/pi-phone-use/README.md) generate `SKILL.md` and
 verified steps from an actual PI demonstration, then resolve fresh controls and verify every result
 on replay. The current adapter uses a fixed Xiaohongshu task and stops on unrecognized changes.

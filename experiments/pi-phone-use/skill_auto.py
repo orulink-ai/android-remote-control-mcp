@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 
+from controller import PACKAGE
 from decision_policy import DecisionPolicy, DecisionPolicyError
 from workflow import RecipeDrift, SELECTOR_KEYS, SkillPolicy, matches, semantic_selector
 
@@ -58,8 +59,11 @@ class SkillAutoPolicy:
         self.last_observation = -1
         self._approved = None
         self._reference_refreshes = {}
+        self.preparation_enabled = recipe.get("entryStrategy") == "prepare-feed-v1"
+        self.preparing = self.preparation_enabled
+        self._preparation_decision = False
 
-    def _guard(self, snapshot):
+    def _guard(self, snapshot, *, preparing=False):
         execution = snapshot.get("execution")
         if execution is not None:
             if not isinstance(execution, dict):
@@ -82,7 +86,7 @@ class SkillAutoPolicy:
         observation = state.get("observation", {})
         if not observation.get("kind") or not state.get("stage"):
             raise DecisionPolicyError("A verified common screen observation is required")
-        if observation.get("kind") == "detail" and observation.get("firstTitleVisible") is not True:
+        if not preparing and observation.get("kind") == "detail" and observation.get("firstTitleVisible") is not True:
             raise DecisionPolicyError("Current detail target is not verified")
         # No model may choose between semantically indistinguishable offered targets.
         seen = set()
@@ -104,8 +108,34 @@ class SkillAutoPolicy:
         self._approved = None
 
     async def decide(self, snapshot, observation_id):
-        self._guard(snapshot)
+        self._guard(snapshot, preparing=self.preparing)
         self.last_observation = observation_id
+        if self.preparing:
+            state = snapshot["state"]
+            ready = (state["observation"]["kind"] == "feed" and state.get("focusedPackage") == PACKAGE
+                     and state["stage"] == "search" and snapshot.get("done") is False)
+            if ready and not self.models.summary()["pendingRefresh"]:
+                self.preparing = False
+            else:
+                # A late feed read cannot skip an already pending fallback. Only
+                # navigation/wait choices are exposed to the preparation model.
+                safe = {key: value for key, value in state.get("actionDescriptors", {}).items()
+                        if key in snapshot["options"] and value.get("method") in {"open", "back", "wait", "blocked"}}
+                prepared = copy.deepcopy(snapshot)
+                prepared["options"] = {key: snapshot["options"][key] for key in safe}
+                prepared["state"]["actionDescriptors"] = safe
+                start = len(self.attempts)
+                try:
+                    result = await self.models.decide(prepared, observation_id)
+                finally:
+                    for attempt in self.attempts[start:]:
+                        attempt["workflowPhase"] = "preparation"
+                if result.get("kind") == "decision":
+                    self._approved = {"choice": result["choice"], "descriptor": copy.deepcopy(safe[result["choice"]]),
+                                      "snapshot": copy.deepcopy(snapshot)}
+                    self._preparation_decision = True
+                    result = {**result, "preparation": True, "modelRequest": True}
+                return result
         if not self.recovery_active:
             try:
                 result = await self.skill.decide(snapshot, observation_id)
@@ -113,7 +143,12 @@ class SkillAutoPolicy:
                 self._recover(drift, snapshot, observation_id)
             else:
                 return result
-        result = await self.models.decide(snapshot, observation_id)
+        start = len(self.attempts)
+        try:
+            result = await self.models.decide(snapshot, observation_id)
+        finally:
+            for attempt in self.attempts[start:]:
+                attempt["workflowPhase"] = "recovery"
         if result.get("kind") == "decision":
             descriptor = snapshot["state"].get("actionDescriptors", {}).get(result["choice"])
             if not isinstance(descriptor, dict):
@@ -126,7 +161,11 @@ class SkillAutoPolicy:
         return result
 
     def verify(self, snapshot):
-        self._guard(snapshot)
+        self._guard(snapshot, preparing=self.preparing)
+        if self._preparation_decision:
+            self._preparation_decision = False
+            self._approved = None
+            return
         if self.recovery_active:
             self._approved = None
             return
@@ -136,8 +175,8 @@ class SkillAutoPolicy:
             self._recover(drift, snapshot, self.last_observation + 1)
 
     def not_dispatched(self, snapshot, choice):
-        self._guard(snapshot)
-        if not self.recovery_active:
+        self._guard(snapshot, preparing=self.preparing)
+        if not self.recovery_active and not self.preparing:
             return self.skill.not_dispatched(snapshot, choice)
         marker = snapshot.get("execution", {})
         approved = self._approved
@@ -157,6 +196,7 @@ class SkillAutoPolicy:
             raise DecisionPolicyError("Reference refresh budget exhausted")
         self._reference_refreshes[token] = count + 1
         self._approved = None
+        self._preparation_decision = False
 
     @staticmethod
     def _predicate(snapshot):
@@ -164,6 +204,8 @@ class SkillAutoPolicy:
         return predicate(snapshot)
 
     def verify_complete(self, snapshot, *, progress=None):
+        if self.preparing:
+            raise DecisionPolicyError("Recorded recipe entry has not been prepared")
         self._guard(snapshot)
         state, observed = snapshot["state"], snapshot["state"]["observation"]
         if (
@@ -185,9 +227,13 @@ class SkillAutoPolicy:
 
     def summary(self):
         local, models = self.skill.summary(), self.models.summary()
+        preparation_requests = sum(item.get("workflowPhase") == "preparation" for item in self.attempts)
+        recovery_requests = len(self.attempts) - preparation_requests
         return {
             **local, **models, "mode": "skill-auto", "recoveryActive": self.recovery_active,
-            "drifts": copy.deepcopy(self.drifts), "modelFallbacks": len(self.attempts),
+            "drifts": copy.deepcopy(self.drifts), "modelFallbacks": recovery_requests,
+            "preparationEnabled": self.preparation_enabled, "preparationComplete": self.preparation_enabled and not self.preparing,
+            "preparationRequests": preparation_requests, "recoveryRequests": recovery_requests,
             "recipeToModelRecoveries": len(self.drifts),
             "deepseekFallbackRequests": models["fallbackRequests"],
             "driftPolicy": "jev-for-rest-of-trial-then-deepseek-once-after-observe",
